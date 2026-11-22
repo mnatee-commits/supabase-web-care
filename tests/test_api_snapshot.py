@@ -72,16 +72,18 @@ class FakeManagementApi(BaseHTTPRequestHandler):
         self.send_response(500)
         self.end_headers()
 
-    advisors = [
-        {"name": "rls_disabled_in_public", "title": "RLS Disabled in Public", "level": "ERROR", "facing": "EXTERNAL",
-         "categories": ["SECURITY"], "description": "Table is public but RLS is not enabled.",
-         "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0013_rls_disabled_in_public",
-         "count": 2, "findings": [{"detail": "x", "metadata": {"schema": "public", "name": "orders", "type": "table"}},
-                                  {"detail": "x", "metadata": {"schema": "public", "name": "notes", "type": "table"}}]},
-        {"name": "authenticated_security_definer_function_executable", "title": "Signed-in users can execute", "level": "WARN",
-         "description": "Functions run with the owner's privileges.", "remediation": "https://example.invalid/x",
-         "count": 300, "findings": [{"metadata": {"schema": "public", "name": f"fn_{i}"}} for i in range(300)]},
-    ]
+    advisors = (
+        [{"name": "rls_disabled_in_public", "title": "RLS Disabled in Public", "level": "ERROR", "facing": "EXTERNAL",
+          "categories": ["SECURITY"], "description": "Table is public but RLS is not enabled.",
+          "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0013_rls_disabled_in_public",
+          "metadata": {"schema": "public", "name": name, "type": "table"}, "cache_key": f"rls_{name}"}
+         for name in ("orders", "notes")]
+        + [{"name": "authenticated_security_definer_function_executable", "title": "Signed-in users can execute",
+            "level": "WARN", "facing": "EXTERNAL", "categories": ["SECURITY"],
+            "description": "Functions run with the owner's privileges.", "remediation": "https://example.invalid/x",
+            "metadata": {"schema": "public", "name": f"fn_{i}", "type": "function"}, "cache_key": f"fn_{i}"}
+           for i in range(300)]
+    )
     auth = {"disable_signup": False, "external_anonymous_users_enabled": False, "mailer_autoconfirm": False,
             "password_min_length": 6, "password_hibp_enabled": True, "mfa_totp_verify_enabled": True,
             "jwt_exp": 3600, "refresh_token_rotation_enabled": True, "security_captcha_enabled": True,

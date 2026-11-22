@@ -3,6 +3,12 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.14.1
+- `--with-advisors`: the real endpoint answers with one entry per flagged object, not one per
+  lint. 1.13.0 and 1.14.0 counted each entry as one object and named none; entries are now
+  grouped by lint name, so counts, object names and `advisors_ignore` totals are right.
+  Found when the first run against a real project showed "(1)" for a lint of 328 objects.
+
 ## 1.14.0
 - New catalog check `default_table_privileges`: reports when the schema's default
   privileges grant every new table or sequence to `anon`, `authenticated` or `PUBLIC`.

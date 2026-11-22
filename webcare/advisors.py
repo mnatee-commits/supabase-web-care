@@ -58,23 +58,44 @@ def _count(lint: dict) -> int:
     return len(findings) if isinstance(findings, list) else 1
 
 
-def _object_names(lint: dict) -> list[str]:
-    names: list[str] = []
-    findings = lint.get("findings")
-    for item in findings if isinstance(findings, list) else []:
-        metadata = item.get("metadata") if isinstance(item, dict) else None
-        if not isinstance(metadata, dict):
+def _label(metadata) -> Optional[str]:
+    """`schema.name` from the metadata of one flagged object, when it has them."""
+    if not isinstance(metadata, dict):
+        return None
+    schema, name = metadata.get("schema"), metadata.get("name") or metadata.get("entity")
+    if not isinstance(name, str) or not name:
+        return None
+    label = f"{schema}.{name}" if isinstance(schema, str) and schema else name
+    return _text(label, MAX_NAME_CHARS)
+
+
+def _group(lints: list) -> dict[str, dict]:
+    """Lint entries grouped by lint name, in the order first seen.
+
+    The platform's endpoint answers with one entry per flagged object, each
+    carrying its own `metadata`. The Supabase MCP tool answers with one entry per
+    lint holding a `findings` list and a `count`. Both are read here, so a count
+    never depends on which of the two a caller was given.
+    """
+    groups: dict[str, dict] = {}
+    for lint in lints:
+        if not isinstance(lint, dict):
             continue
-        schema, name = metadata.get("schema"), metadata.get("name") or metadata.get("entity")
-        if not isinstance(name, str) or not name:
-            continue
-        label = f"{schema}.{name}" if isinstance(schema, str) and schema else name
-        label = _text(label, MAX_NAME_CHARS)
-        if label not in names:
-            names.append(label)
-        if len(names) >= MAX_NAMES:
-            break
-    return names
+        name = _text(lint.get("name") or "unknown", MAX_NAME_CHARS)
+        group = groups.setdefault(name, {"lint": lint, "count": 0, "names": []})
+        found: list[Optional[str]]
+        if isinstance(lint.get("findings"), list) or isinstance(lint.get("count"), int):
+            group["count"] += _count(lint)
+            found = [
+                _label(item.get("metadata")) for item in lint.get("findings") or [] if isinstance(item, dict)
+            ]
+        else:
+            group["count"] += 1
+            found = [_label(lint.get("metadata"))]
+        for label in found:
+            if label and label not in group["names"] and len(group["names"]) < MAX_NAMES:
+                group["names"].append(label)
+    return groups
 
 
 def judge(result: CheckResult, answer, target: Target) -> CheckResult:
@@ -82,22 +103,16 @@ def judge(result: CheckResult, answer, target: Target) -> CheckResult:
     if lints is None:
         result.status, result.reason = ERROR, "the advisor answer was not in the documented shape"
         return result
+    groups = _group(lints)
     ignore = set(target.advisors_ignore)
-    seen: set[str] = set()
     ignored: dict[str, int] = {}
-    total = 0
-    for lint in lints:
-        if not isinstance(lint, dict):
-            continue
-        name = _text(lint.get("name") or "unknown", MAX_NAME_CHARS)
-        seen.add(name)
-        count = _count(lint)
-        total += count
+    total = sum(group["count"] for group in groups.values())
+    for name, group in groups.items():
+        lint, count, names = group["lint"], group["count"], group["names"]
         if name in ignore:
             ignored[name] = count
             continue
         severity = _SEVERITY.get(str(lint.get("level")).upper(), "medium")
-        names = _object_names(lint)
         shown = ""
         if names:
             more = f" and {count - len(names)} more" if count > len(names) else ""
@@ -112,7 +127,7 @@ def judge(result: CheckResult, answer, target: Target) -> CheckResult:
             )
         )
     result.notes.append(
-        f"{len(lints)} kinds of lint returned, {total} objects in all. Security lints only: the "
+        f"{len(groups)} kinds of lint returned, {total} objects in all. Security lints only: the "
         "performance and health advisors were not read. These are the platform's checks, not "
         "pgrls's analysis of what each policy lets a caller do."
     )
@@ -121,7 +136,7 @@ def judge(result: CheckResult, answer, target: Target) -> CheckResult:
             "not counted because advisors_ignore lists them: "
             + ", ".join(f"{name} ({count})" for name, count in sorted(ignored.items()))
         )
-    stale = sorted(ignore - seen)
+    stale = sorted(ignore - set(groups))
     if stale:
         result.notes.append(
             "advisors_ignore lists lints the advisor did not return, so the entries can be "

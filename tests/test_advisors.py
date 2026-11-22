@@ -72,3 +72,38 @@ def test_advisors_ignore_must_look_like_lint_names(tmp_path):
     config.write_text(f'[[target]]\n{base}advisors_ignore = ["Not A Lint; drop table"]\n')
     with pytest.raises(Refusal):
         load_targets(config)
+
+
+def flat(name, objects, level="WARN"):
+    """The shape the platform's endpoint answers with: one entry per flagged object."""
+    return [{"name": name, "title": name.replace("_", " ").title(), "level": level, "description": "d",
+             "metadata": {"schema": "public", "name": obj, "type": "table"}, "cache_key": f"{name}_{obj}"}
+            for obj in objects]
+
+
+def test_one_entry_per_object_is_counted_and_named_like_the_grouped_shape():
+    answer = flat("rls_disabled_in_public", ["orders", "notes"], "ERROR") + flat("big_lint", [f"fn_{i}" for i in range(400)])
+    result = judged(answer)
+    assert rules(result) == {("rls_disabled_in_public", "high"), ("big_lint", "medium")}
+    by = {f.rule: f.message for f in result.findings}
+    assert "2 objects (for example public.orders, public.notes)" in by["rls_disabled_in_public"]
+    assert "400 objects" in by["big_lint"] and "and 395 more" in by["big_lint"] and "fn_5" not in by["big_lint"]
+    assert "2 kinds of lint returned, 402 objects" in result.notes[0]
+
+
+def test_ignoring_a_lint_in_the_flat_shape_counts_every_entry():
+    answer = flat("big_lint", [f"fn_{i}" for i in range(328)]) + flat("rls_disabled_in_public", ["orders"], "ERROR")
+    result = judged(answer, ignore=["big_lint"])
+    assert rules(result) == {("rls_disabled_in_public", "high")}
+    assert "big_lint (328)" in " ".join(result.notes)
+
+
+def test_both_shapes_in_one_answer_add_up():
+    answer = [lint("mixed_lint", "WARN", count=3, names=["a", "b", "c"])] + flat("mixed_lint", ["d", "e"])
+    result = judged(answer)
+    assert len(result.findings) == 1 and "5 objects" in result.findings[0].message
+
+
+def test_an_entry_without_metadata_still_counts():
+    result = judged([{"name": "auth_leaked_password_protection", "level": "WARN", "title": "Leaked", "description": "off"}])
+    assert "1 object." in result.findings[0].message and "for example" not in result.findings[0].message
