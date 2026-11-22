@@ -65,6 +65,10 @@ against a real system is listed at the end of [docs/OFFLINE_VM.md](docs/OFFLINE_
 
 What is done, in progress and planned is in [ROADMAP.md](ROADMAP.md).
 
+Each version is published as a [GitHub Release](https://github.com/mnatee-commits/supabase-web-care/releases);
+watch the repository for releases to hear about new ones. Pin a release's commit,
+not a branch, in CI.
+
 ## Use it together with
 
 This toolkit is a thin layer. It is meant to sit beside these, not replace them.

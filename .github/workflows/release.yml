@@ -1,0 +1,33 @@
+name: release
+
+# Publishes a GitHub Release when a version tag such as v1.17.0 is pushed.
+# The notes are that version's section of CHANGELOG.md, so nothing is typed twice.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check the tag matches the code
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          grep -qx "__version__ = \"$version\"" webcare/__init__.py || { echo "webcare/__init__.py is not $version"; exit 1; }
+          grep -qx "## $version" CHANGELOG.md || { echo "CHANGELOG.md has no section for $version"; exit 1; }
+      - name: Take the notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v head="## $version" '$0 == head {on = 1; next} on && /^## / {exit} on {print}' CHANGELOG.md > notes.md
+          printf '\nFull history: CHANGELOG.md. What has been verified against a real project: docs/OFFLINE_VM.md.\n' >> notes.md
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag

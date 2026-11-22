@@ -4,6 +4,8 @@ Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
 ## 1.17.0
+- Releases: pushing a tag `vX.Y.Z` publishes a GitHub Release whose notes are this file's
+  section for that version. The tag must match `webcare/__init__.py`.
 - New check `table_writes`, on `--via-api` and over a connection: which tables and views
   `anon` and `authenticated` may insert, update or delete, judged against the target's new
   `expected_table_writes`. A write on a table with RLS off is always reported; TRUNCATE
