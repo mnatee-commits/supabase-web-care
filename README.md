@@ -36,6 +36,7 @@ Full manual: [MANUAL.md](MANUAL.md) (English) Â· [README_TH.md](README_TH.md) (à
 | RLS policies (through pgrls) | SQL files, or a database connection |
 | Who may call `SECURITY DEFINER` functions, against a declared allowlist | SQL files, database, or Management API |
 | Policy and default-privilege problems pgrls does not cover | database or Management API |
+| Extension schemas the API roles may reach: pg_net (outbound HTTP), Vault, pg_cron | database or Management API |
 | Storage buckets: public access, anonymous writes, upload limits | Management API |
 | Tables `anon` and `authenticated` may write to, against a declared list | database or Management API |
 | Scheduled jobs (pg_cron) that failed or stopped | Management API |

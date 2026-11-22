@@ -261,3 +261,88 @@ where r.rolname <> 'supabase_admin'
   and (s.grantee = 0 or g.rolname in ('anon', 'authenticated'))
 group by n.nspname, r.rolname, s.defaclrole, s.defaclobjtype
 order by 1;
+
+-- check: extension_net_callable
+-- severity: medium
+-- title: API roles may call pg_net, which sends HTTP requests from the database server
+-- why: The functions in schema net make the database server fetch any URL. A role
+--      that may call them, directly or through a function that runs as the caller,
+--      can make the server reach addresses only it can see (SSRF). Some Supabase
+--      projects grant them to anon and authenticated from the start (a project made
+--      in November 2026 did), so read this as a gate left open, not proof of misuse.
+select
+  'schema net (role ' || r.rolname || ')' as location,
+  r.rolname || ' may call ' || count(*) || ' pg_net functions ('
+    || string_agg(p.proname, ', ' order by p.proname)
+    || '); schema net is not served by the Data API, so the way in is a function in an '
+    || 'exposed schema that runs as the caller and passes a URL on. Before revoking, find '
+    || 'triggers and functions that call net as the signed-in user, since they would stop working'
+    as detail
+from pg_catalog.pg_namespace n
+join pg_catalog.pg_proc p on p.pronamespace = n.oid
+cross join pg_catalog.pg_roles r
+where n.nspname = 'net'
+  and r.rolname in ('anon', 'authenticated')
+  and pg_catalog.has_schema_privilege(r.oid, n.oid, 'USAGE')
+  and pg_catalog.has_function_privilege(r.oid, p.oid, 'EXECUTE')
+group by r.rolname
+order by 1;
+
+-- check: extension_vault_reachable
+-- severity: high
+-- title: API roles may read Vault or call its functions
+-- why: Supabase Vault keeps secrets (API keys, webhook secrets) in schema vault,
+--      and vault.decrypted_secrets shows them in clear text. Only trusted server
+--      roles should reach it. pgsodium, which Vault was built on, is checked too.
+select
+  'schema ' || n.nspname || ' (role ' || r.rolname || ')' as location,
+  r.rolname || ' may read ' || reach.relations || ' relations and call '
+    || reach.functions || ' functions in ' || n.nspname
+    || coalesce(' (' || reach.names || ')', '') as detail
+from pg_catalog.pg_namespace n
+cross join pg_catalog.pg_roles r
+cross join lateral (
+  select
+    (select count(*) from pg_catalog.pg_class c
+      where c.relnamespace = n.oid and c.relkind in ('r', 'v', 'm', 'p')
+        and pg_catalog.has_table_privilege(r.oid, c.oid, 'SELECT')) as relations,
+    (select count(*) from pg_catalog.pg_proc p
+      where p.pronamespace = n.oid and pg_catalog.has_function_privilege(r.oid, p.oid, 'EXECUTE')) as functions,
+    (select string_agg(c.relname, ', ' order by c.relname) from pg_catalog.pg_class c
+      where c.relnamespace = n.oid and c.relkind in ('r', 'v', 'm', 'p')
+        and pg_catalog.has_table_privilege(r.oid, c.oid, 'SELECT')) as names
+) reach
+where n.nspname in ('vault', 'pgsodium')
+  and r.rolname in ('anon', 'authenticated')
+  and pg_catalog.has_schema_privilege(r.oid, n.oid, 'USAGE')
+  and reach.relations + reach.functions > 0
+order by 1;
+
+-- check: extension_cron_reachable
+-- severity: medium
+-- title: API roles may schedule jobs or read the job list (pg_cron)
+-- why: Whoever may call cron.schedule can make the database run a command again
+--      and again; the job list in cron.job holds each job's command, which can
+--      include keys. Supabase keeps both from anon and authenticated.
+select
+  'schema cron (role ' || r.rolname || ')' as location,
+  r.rolname || ' may call ' || reach.functions || ' pg_cron functions'
+    || coalesce(' (' || reach.function_names || ')', '')
+    || ' and read ' || reach.relations || ' of its tables' as detail
+from pg_catalog.pg_namespace n
+cross join pg_catalog.pg_roles r
+cross join lateral (
+  select
+    (select count(*) from pg_catalog.pg_proc p
+      where p.pronamespace = n.oid and pg_catalog.has_function_privilege(r.oid, p.oid, 'EXECUTE')) as functions,
+    (select string_agg(p.proname, ', ' order by p.proname) from pg_catalog.pg_proc p
+      where p.pronamespace = n.oid and pg_catalog.has_function_privilege(r.oid, p.oid, 'EXECUTE')) as function_names,
+    (select count(*) from pg_catalog.pg_class c
+      where c.relnamespace = n.oid and c.relkind in ('r', 'v', 'p')
+        and pg_catalog.has_table_privilege(r.oid, c.oid, 'SELECT')) as relations
+) reach
+where n.nspname = 'cron'
+  and r.rolname in ('anon', 'authenticated')
+  and pg_catalog.has_schema_privilege(r.oid, n.oid, 'USAGE')
+  and reach.functions + reach.relations > 0
+order by 1;

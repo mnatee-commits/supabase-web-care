@@ -55,3 +55,16 @@ alter default privileges for role supabase_admin in schema public grant execute 
 
 -- New tables are granted to the API roles by default: the table-level twin of the line above.
 alter default privileges in schema public grant select, insert on tables to anon, authenticated;
+
+-- Extension schemas opened to the API roles (stand-ins for pg_net, Vault and pg_cron).
+create schema if not exists net;
+create function net.http_post(url text) returns bigint language sql as $$ select 1::bigint $$;
+grant usage on schema net to anon, authenticated;
+grant execute on function net.http_post(text) to anon;
+create schema if not exists vault;
+create view vault.decrypted_secrets as select 'k'::text as name, 's'::text as decrypted_secret;
+grant usage on schema vault to authenticated;
+grant select on vault.decrypted_secrets to authenticated;
+create schema if not exists cron;
+create function cron.schedule(name text, spec text, command text) returns bigint language sql as $$ select 1::bigint $$;
+grant usage on schema cron to authenticated;

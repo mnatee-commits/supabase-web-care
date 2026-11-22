@@ -277,6 +277,83 @@ select jsonb_build_object(
         order by 1
         limit 500
       ) q
+    ), '[]'::jsonb),
+    'extension_net_callable', coalesce((
+      select jsonb_agg(to_jsonb(q)) from (
+        select
+          'schema net (role ' || r.rolname || ')' as location,
+          r.rolname || ' may call ' || count(*) || ' pg_net functions ('
+            || string_agg(p.proname, ', ' order by p.proname)
+            || '); schema net is not served by the Data API, so the way in is a function in an '
+            || 'exposed schema that runs as the caller and passes a URL on. Before revoking, find '
+            || 'triggers and functions that call net as the signed-in user, since they would stop working'
+            as detail
+        from pg_catalog.pg_namespace n
+        join pg_catalog.pg_proc p on p.pronamespace = n.oid
+        cross join pg_catalog.pg_roles r
+        where n.nspname = 'net'
+          and r.rolname in ('anon', 'authenticated')
+          and pg_catalog.has_schema_privilege(r.oid, n.oid, 'USAGE')
+          and pg_catalog.has_function_privilege(r.oid, p.oid, 'EXECUTE')
+        group by r.rolname
+        order by 1
+        limit 500
+      ) q
+    ), '[]'::jsonb),
+    'extension_vault_reachable', coalesce((
+      select jsonb_agg(to_jsonb(q)) from (
+        select
+          'schema ' || n.nspname || ' (role ' || r.rolname || ')' as location,
+          r.rolname || ' may read ' || reach.relations || ' relations and call '
+            || reach.functions || ' functions in ' || n.nspname
+            || coalesce(' (' || reach.names || ')', '') as detail
+        from pg_catalog.pg_namespace n
+        cross join pg_catalog.pg_roles r
+        cross join lateral (
+          select
+            (select count(*) from pg_catalog.pg_class c
+              where c.relnamespace = n.oid and c.relkind in ('r', 'v', 'm', 'p')
+                and pg_catalog.has_table_privilege(r.oid, c.oid, 'SELECT')) as relations,
+            (select count(*) from pg_catalog.pg_proc p
+              where p.pronamespace = n.oid and pg_catalog.has_function_privilege(r.oid, p.oid, 'EXECUTE')) as functions,
+            (select string_agg(c.relname, ', ' order by c.relname) from pg_catalog.pg_class c
+              where c.relnamespace = n.oid and c.relkind in ('r', 'v', 'm', 'p')
+                and pg_catalog.has_table_privilege(r.oid, c.oid, 'SELECT')) as names
+        ) reach
+        where n.nspname in ('vault', 'pgsodium')
+          and r.rolname in ('anon', 'authenticated')
+          and pg_catalog.has_schema_privilege(r.oid, n.oid, 'USAGE')
+          and reach.relations + reach.functions > 0
+        order by 1
+        limit 500
+      ) q
+    ), '[]'::jsonb),
+    'extension_cron_reachable', coalesce((
+      select jsonb_agg(to_jsonb(q)) from (
+        select
+          'schema cron (role ' || r.rolname || ')' as location,
+          r.rolname || ' may call ' || reach.functions || ' pg_cron functions'
+            || coalesce(' (' || reach.function_names || ')', '')
+            || ' and read ' || reach.relations || ' of its tables' as detail
+        from pg_catalog.pg_namespace n
+        cross join pg_catalog.pg_roles r
+        cross join lateral (
+          select
+            (select count(*) from pg_catalog.pg_proc p
+              where p.pronamespace = n.oid and pg_catalog.has_function_privilege(r.oid, p.oid, 'EXECUTE')) as functions,
+            (select string_agg(p.proname, ', ' order by p.proname) from pg_catalog.pg_proc p
+              where p.pronamespace = n.oid and pg_catalog.has_function_privilege(r.oid, p.oid, 'EXECUTE')) as function_names,
+            (select count(*) from pg_catalog.pg_class c
+              where c.relnamespace = n.oid and c.relkind in ('r', 'v', 'p')
+                and pg_catalog.has_table_privilege(r.oid, c.oid, 'SELECT')) as relations
+        ) reach
+        where n.nspname = 'cron'
+          and r.rolname in ('anon', 'authenticated')
+          and pg_catalog.has_schema_privilege(r.oid, n.oid, 'USAGE')
+          and reach.functions + reach.relations > 0
+        order by 1
+        limit 500
+      ) q
     ), '[]'::jsonb)
   )
 ) as snapshot;

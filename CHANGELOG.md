@@ -3,6 +3,17 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.20.0
+- Three catalog checks for extension schemas the API roles should not reach:
+  `extension_net_callable` (medium: `anon` or `authenticated` may call pg_net, which sends
+  HTTP requests from the database server), `extension_vault_reachable` (high: they may
+  read Vault or pgsodium, or call their functions) and `extension_cron_reachable` (medium:
+  they may schedule pg_cron jobs or read the job list). They run on every route that runs
+  the catalog checks: a connection, `--via-api` and a snapshot file. On a Supabase project
+  created in November 2026 both roles could call all 12 pg_net functions from the start,
+  so read that finding as an open gate, and check for functions that call pg_net as the
+  signed-in user before revoking.
+
 ## 1.19.0
 Fixes from the second outside review (Gemini, 23 November 2026, of 1.16.0 to 1.18.0).
 - `table_writes`: a write privilege on a table with RLS off is reported even when the

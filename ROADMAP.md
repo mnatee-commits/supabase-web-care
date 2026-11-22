@@ -24,6 +24,7 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.17 | Declared table grants (`table_writes`, `expected_table_writes`); SARIF output (`--sarif`) | The table statement ran on a real project; SARIF has not been uploaded to GitHub yet |
 | 1.18 | Fixes from an outside review: function overloads, TLS for database connections, password variables, build output, `pip install .` | Test suite; the changed catalog checks ran on a real project |
 | 1.19 | Fixes from a second outside review: views and declared tables in `table_writes`, `hostaddr`, renamed functions, SARIF placement, release workflow | Test suite; the changed checks ran on a real project |
+| 1.20 | Extension schemas the API roles may reach (pg_net, Vault, pg_cron) | Yes: found the pg_net grant on a real project |
 
 ## In progress
 
@@ -36,8 +37,11 @@ Nothing at the moment.
 2. **Exposed schemas read from the database.** Take the schemas the Data API serves
    from the `authenticator` role's `pgrst.db_schemas` setting instead of assuming
    `public`, and report views there without `security_invoker`.
-3. **Extension schemas.** Whether `anon` or `authenticated` may use `net` (pg_net,
-   outbound HTTP), `cron` or `vault`.
+3. **Focused runs (asked for by the owner).** As the checks grow, run a part of them:
+   `--focus` with one or more areas (`functions`, `tables`, `storage`, `secrets`,
+   `extensions`, `auth`, `health`), and named sets such as `quick` (files only) and
+   `full`. Checks left out show as `NOT_RUN` with the reason, so a focused report is never
+   read as a whole one.
 4. **Storage per bucket.** Judge `storage.objects` policies bucket by bucket.
 5. **Platform settings** such as SSL enforcement and network restrictions. The
    Management API endpoints for these have not been checked yet.

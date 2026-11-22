@@ -17,6 +17,9 @@ def test_extra_checks_file_holds_only_selects():
         "default_function_privileges",
         "default_function_privileges_platform",
         "default_table_privileges",
+        "extension_net_callable",
+        "extension_vault_reachable",
+        "extension_cron_reachable",
     ]
 
 
@@ -223,6 +226,14 @@ def test_guard_that_trusts_current_user_and_default_privileges_are_found(pg):
     assert len(tables) == 1 and tables[0].location.startswith("public (tables created by ")
     assert "anon, authenticated" in tables[0].message and "service_role" not in tables[0].message
     assert tables[0].severity == "low"
+    net = grouped["extension_net_callable"]
+    assert sorted(f.location for f in net) == ["schema net (role anon)", "schema net (role authenticated)"]
+    assert net[0].severity == "medium" and "http_post" in net[0].message
+    vault = grouped["extension_vault_reachable"]
+    assert [(f.location, f.severity) for f in vault] == [("schema vault (role authenticated)", "high")]
+    assert "decrypted_secrets" in vault[0].message
+    cron = grouped["extension_cron_reachable"]
+    assert [f.location for f in cron] == ["schema cron (role authenticated)"] and "schedule" in cron[0].message
     assert not any("could not run" in note for note in result.notes)
 
 
@@ -236,4 +247,5 @@ def test_comments_and_strings_naming_current_user_do_not_count(pg):
     assert "secdef_trusts_current_user" not in grouped
     assert "default_function_privileges" not in grouped
     assert "default_table_privileges" not in grouped
+    assert not any(rule.startswith("extension_") for rule in grouped)
     assert not any("could not run" in note for note in result.notes)
