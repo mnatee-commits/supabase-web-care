@@ -127,6 +127,8 @@ def parse_dsn(dsn: str) -> DbEndpoint:
     except Exception:
         # psycopg's message can echo the string, which may hold a password.
         raise Refusal("the database connection string could not be parsed") from None
+    if info.get("hostaddr"):
+        raise Refusal(_HOSTADDR)
     host = str(info.get("host") or "")
     if not host or "," in host or host.startswith("/"):
         raise Refusal(
@@ -146,6 +148,10 @@ def parse_dsn(dsn: str) -> DbEndpoint:
 
 
 SECURE_SSLMODES = ("require", "verify-ca", "verify-full")
+_HOSTADDR = (
+    "the connection string sets hostaddr, which makes the driver connect to that address "
+    "whatever host names; name the database by host only"
+)
 
 
 def with_tls(dsn: str) -> str:
@@ -162,12 +168,16 @@ def with_tls(dsn: str) -> str:
         info = conninfo_to_dict(dsn)
     except Exception:
         raise Refusal("the database connection string could not be parsed") from None
+    if info.get("hostaddr"):
+        raise Refusal(_HOSTADDR)
     host = str(info.get("host") or "").lower()
     if _is_private_host(host):
         return dsn
     mode = str(info.get("sslmode") or "")
     if mode in SECURE_SSLMODES:
         return dsn
+    if mode.lower() in SECURE_SSLMODES:
+        raise Refusal(f"sslmode={mode}: libpq reads only lower case; write sslmode={mode.lower()}")
     if mode:
         raise Refusal(
             f"the connection string sets sslmode={mode} for a public host, which lets the "

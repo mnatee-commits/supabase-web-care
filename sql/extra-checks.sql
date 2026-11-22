@@ -123,11 +123,11 @@ where p.prosecdef
       and d.objid = p.oid
       and d.deptype = 'e'
   )
+  -- strings and both kinds of comment go in one left-to-right pass, so a comment marker
+  -- inside a string, or a quote inside a comment, does not hide what follows
   and regexp_replace(
-        regexp_replace(
-          regexp_replace(p.prosrc, '/\*.*?\*/', '', 'g'),
-          '--[^\n]*', '', 'g'),
-        '''(?:[^'']|'''')*''', '', 'g'
+        p.prosrc,
+        '''(?:[^'']|'''')*''|--[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/', '', 'g'
       ) ~* '\mcurrent_(user|role)\M'
 order by 1;
 

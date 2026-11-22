@@ -120,6 +120,15 @@ def test_database_password_variables():
     for harmless in ("PGPASSWORD=postgres", "POSTGRES_PASSWORD: ${{ secrets.DB }}", "DB_PASSWORD=$DB_PASSWORD",
                      "DATABASE_PASSWORD=<your password>", "MY_PGPASSWORD_HINT=see-docs"):
         assert "database_password_variable" not in rules(harmless), harmless
+    db = "DB_" + "PASSWORD"
+    secret = "Zq8#Lm2!Vx7"
+    for leaked in (f'SUPABASE_{db}="{secret}"', f'{{"SUPABASE_{db}": "{secret}"}}',
+                   f"NEXT_PUBLIC_{db}={secret.replace('#', '')}", f"{pg}='$Prod{secret}'"):
+        assert rules(leaked).get("database_password_variable") == "high", leaked
+    for reads_it in (f"const {db} = process.env.{db}", f'{db} = os.getenv("{db}")',
+                     f"{db}: z.string().min(8)", f'{db}="your-db-password"', f'{db}="<enter password>"',
+                     f'{db}="example_password"'):
+        assert "database_password_variable" not in rules(reads_it), reads_it
 
 
 def test_build_output_is_skipped_unless_asked(tmp_path):

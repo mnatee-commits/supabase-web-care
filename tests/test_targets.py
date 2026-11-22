@@ -123,6 +123,10 @@ def test_public_database_hosts_must_use_tls():
     assert with_tls("postgresql://a@db.example.com/app?application_name=x").endswith("&sslmode=require")
     kept = "host=db.example.com dbname=app sslmode=verify-full"
     assert with_tls(kept) == kept
+    with pytest.raises(Refusal, match="hostaddr"):
+        with_tls("postgresql://a@localhost/app?hostaddr=203.0.113.10")
+    with pytest.raises(Refusal, match="lower case"):
+        with_tls("host=db.example.com dbname=app sslmode=REQUIRE")
     for weak in ("disable", "allow", "prefer"):
         with pytest.raises(Refusal, match="sslmode"):
             with_tls(f"host=db.example.com dbname=app sslmode={weak}")

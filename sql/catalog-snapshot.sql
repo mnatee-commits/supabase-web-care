@@ -154,10 +154,8 @@ select jsonb_build_object(
               and d.deptype = 'e'
           )
           and regexp_replace(
-                regexp_replace(
-                  regexp_replace(p.prosrc, '/\*.*?\*/', '', 'g'),
-                  '--[^\n]*', '', 'g'),
-                '''(?:[^'']|'''')*''', '', 'g'
+                p.prosrc,
+                '''(?:[^'']|'''')*''|--[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/', '', 'g'
               ) ~* '\mcurrent_(user|role)\M'
         order by 1
         limit 500

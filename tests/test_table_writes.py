@@ -6,9 +6,9 @@ from webcare.targets import Target, load_targets
 
 
 def row(table, role="authenticated", writes=("insert", "update", "delete"), rls=True, kind="r",
-        columns_only=(), truncate=False):
+        columns_only=(), truncate=False, invoker=False):
     return {"table_name": table, "role": role, "writes": list(writes), "rls": rls, "kind": kind,
-            "columns_only": list(columns_only), "may_truncate": truncate}
+            "columns_only": list(columns_only), "may_truncate": truncate, "security_invoker": invoker}
 
 
 def judged(*rows, declared=None):
@@ -73,6 +73,23 @@ def test_columns_only_and_truncate_are_named():
                     declared={"authenticated": ["public.q"]})
     assert "update (some columns)" in result.findings[0].message
     assert any("TRUNCATE ignores RLS" in note for note in result.notes)
+    anon = judged(row("public.p", role="anon", writes=(), truncate=True))
+    assert found(anon) == {("anon_truncate", "low", "role anon")}
+
+
+def test_a_declared_table_with_rls_off_is_still_reported():
+    result = judged(row("public.notes", rls=False), declared={"authenticated": ["public.notes"]})
+    assert found(result) == {("authenticated_write_without_rls", "medium", "public.notes")}
+
+
+def test_views_and_foreign_tables_are_judged_by_what_guards_them():
+    owner_view = judged(row("public.v", role="anon", kind="v", rls=False), declared={"anon": ["public.v"]})
+    assert found(owner_view) == {("anon_write_without_rls", "high", "public.v")}
+    assert "security_invoker" in owner_view.findings[0].message
+    invoker_view = judged(row("public.v", kind="v", rls=False, invoker=True), declared={"authenticated": ["public.v"]})
+    assert invoker_view.status == "PASS"
+    foreign = judged(row("public.f", kind="f", rls=False))
+    assert "foreign table cannot have RLS" in foreign.findings[0].message
 
 
 def test_target_file_entries_are_validated(tmp_path):

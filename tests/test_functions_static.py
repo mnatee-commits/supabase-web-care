@@ -219,3 +219,30 @@ def test_overloads_are_kept_apart(tmp_path):
         "drop function public.search(text);\n",
     )
     assert [f.location for f in dropped.findings] == ["public.search (0001_migration.sql:1)"]
+
+
+def test_rename_and_set_schema_carry_the_function_and_its_privileges(tmp_path):
+    result = run(
+        tmp_path,
+        f"create function public.old_name(q integer) returns int {DEFINER};\n"
+        "alter function public.old_name(integer) rename to new_name;\n"
+        "alter function public.new_name(int) set schema private;\n",
+    )
+    assert [f.location.split(" ")[0] for f in result.findings] == ["private.new_name"]
+    closed = run(
+        tmp_path,
+        f"create function public.old_name(q integer) returns int {DEFINER};\n"
+        "alter function public.old_name rename to new_name;\n"
+        "revoke all on function public.new_name(int) from public, anon;\n",
+    )
+    assert closed.findings == []
+
+
+def test_argument_types_from_other_schemas_stay_apart(tmp_path):
+    result = run(
+        tmp_path,
+        f"create function public.ingest(p v1.payload) returns int {DEFINER};\n"
+        f"create function public.ingest(p v2.payload) returns int {DEFINER};\n"
+        "revoke all on function public.ingest(v2.payload) from public, anon;\n",
+    )
+    assert [f.location for f in result.findings] == ["public.ingest (0001_migration.sql:1)"]

@@ -13,15 +13,16 @@ on:
         description: "version to release, e.g. 1.17.0 (must match webcare/__init__.py)"
         required: true
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # gh release create, and nothing else
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2, pinned: this job can write
         with:
           persist-credentials: false
       - name: Work out the tag
@@ -30,18 +31,21 @@ jobs:
         run: |
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             [ "$GITHUB_REF_NAME" = "main" ] || { echo "run this on main"; exit 1; }
-            printf '%s' "$INPUT_VERSION" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+' || { echo "not a version: $INPUT_VERSION"; exit 1; }
+            # [[ =~ ]] tests the whole value; a value with a line break never matches,
+            # so nothing extra can reach GITHUB_ENV below.
+            [[ "$INPUT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a version"; exit 1; }
             echo "TAG=v$INPUT_VERSION" >> "$GITHUB_ENV"
             echo "VERIFY=" >> "$GITHUB_ENV"
           else
+            [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a version tag"; exit 1; }
             echo "TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
             echo "VERIFY=--verify-tag" >> "$GITHUB_ENV"
           fi
       - name: Check the tag matches the code
         run: |
           version="${TAG#v}"
-          grep -qx "__version__ = \"$version\"" webcare/__init__.py || { echo "webcare/__init__.py is not $version"; exit 1; }
-          grep -qx "## $version" CHANGELOG.md || { echo "CHANGELOG.md has no section for $version"; exit 1; }
+          grep -Fqx "__version__ = \"$version\"" webcare/__init__.py || { echo "webcare/__init__.py is not $version"; exit 1; }
+          grep -Fqx "## $version" CHANGELOG.md || { echo "CHANGELOG.md has no section for $version"; exit 1; }
       - name: Take the notes from CHANGELOG.md
         run: |
           version="${TAG#v}"

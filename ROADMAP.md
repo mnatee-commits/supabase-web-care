@@ -23,6 +23,7 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.16 | Comparing two environments (`inventory`, `compare`) | Statements ran on a real project; the whole command against the test database only |
 | 1.17 | Declared table grants (`table_writes`, `expected_table_writes`); SARIF output (`--sarif`) | The table statement ran on a real project; SARIF has not been uploaded to GitHub yet |
 | 1.18 | Fixes from an outside review: function overloads, TLS for database connections, password variables, build output, `pip install .` | Test suite; the changed catalog checks ran on a real project |
+| 1.19 | Fixes from a second outside review: views and declared tables in `table_writes`, `hostaddr`, renamed functions, SARIF placement, release workflow | Test suite; the changed checks ran on a real project |
 
 ## In progress
 
@@ -30,13 +31,23 @@ Nothing at the moment.
 
 ## Planned, not started
 
-1. **Platform settings** such as SSL enforcement and network restrictions. The
+1. **Realtime.** Report tables published through `supabase_realtime` that have RLS
+   off, and check the policies on `realtime.messages` (suggested by the second review).
+2. **Exposed schemas read from the database.** Take the schemas the Data API serves
+   from the `authenticator` role's `pgrst.db_schemas` setting instead of assuming
+   `public`, and report views there without `security_invoker`.
+3. **Extension schemas.** Whether `anon` or `authenticated` may use `net` (pg_net,
+   outbound HTTP), `cron` or `vault`.
+4. **Storage per bucket.** Judge `storage.objects` policies bucket by bucket.
+5. **Platform settings** such as SSL enforcement and network restrictions. The
    Management API endpoints for these have not been checked yet.
-2. **Thai text for each finding's detail.** Headings are translated already.
+6. **Thai text for each finding's detail.** Headings are translated already.
+7. **A GitHub Action (`action.yml`) and a pre-commit hook**, so a site's repository can
+   run the file checks in one line.
 
 ## Waiting on a decision
 
-3. **Probing as a signed-in test user.** Policies that exist but restrict too
+8. **Probing as a signed-in test user.** Policies that exist but restrict too
    little are a common cause of leaks, and only a signed-in request shows them.
    Signing in writes session rows, and may write an application's own audit
    rows, so this needs a design that the owner of each project accepts. Staging

@@ -33,6 +33,7 @@ create function private.guard() returns void
 language plpgsql security definer set search_path = ''
 as $$
 begin
+  perform 'a comment marker -- inside a string must not hide the next line';
   if current_user = 'postgres' then
     return;
   end if;

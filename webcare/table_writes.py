@@ -37,7 +37,7 @@ def build_sql(schemas) -> str:
   'roles', coalesce((select jsonb_agg(r.rolname order by r.rolname) from pg_catalog.pg_roles r where r.rolname in ({roles})), '[]'::jsonb),
   'tables', coalesce((
     select jsonb_agg(to_jsonb(q) order by q.table_name, q.role) from (
-      select w.table_name, w.kind, w.rls, w.role,
+      select w.table_name, w.kind, w.rls, w.security_invoker, w.role,
              array_remove(array[
                case when w.ins then 'insert' end,
                case when w.upd then 'update' end,
@@ -49,6 +49,8 @@ def build_sql(schemas) -> str:
         from (
           select n.nspname || '.' || c.relname as table_name, c.relkind::text as kind,
                  c.relrowsecurity as rls, r.rolname::text as role,
+                 exists (select 1 from unnest(coalesce(c.reloptions, '{{}}'::text[])) o
+                          where o ~* '^security_invoker=(true|on|yes|1)$') as security_invoker,
                  pg_catalog.has_any_column_privilege(r.oid, c.oid, 'INSERT') as ins,
                  pg_catalog.has_table_privilege(r.oid, c.oid, 'INSERT') as ins_all,
                  pg_catalog.has_any_column_privilege(r.oid, c.oid, 'UPDATE') as upd,
@@ -63,7 +65,7 @@ def build_sql(schemas) -> str:
              and r.rolname in ({roles})
         ) w
        where w.ins or w.upd or w.del or w.trunc
-       order by 1, 4
+       order by w.rls, 1, 4
        limit {MAX_ROWS}
     ) q
   ), '[]'::jsonb)
@@ -82,6 +84,21 @@ def _declared(target: Target) -> dict[str, dict[str, set[str]]]:
             wanted = {c.strip() for c in commands.split(",") if c.strip()} or set(TABLE_WRITE_COMMANDS)
             allowed[role].setdefault(table, set()).update(wanted)
     return allowed
+
+
+def _unguarded(row: dict) -> str:
+    """Why RLS does not stand behind this object's write privilege, or "" when it does."""
+    kind = row.get("kind")
+    if kind == "v":
+        if row.get("security_invoker"):
+            return ""  # the base tables' RLS applies to the caller
+        return ("the view runs with its owner's rights, so the base tables' RLS does not apply "
+                "to the caller. Set security_invoker = true on the view, or revoke the privilege.")
+    if kind == "f":
+        return ("a foreign table cannot have RLS, so nothing else stops it. Revoke the privilege.")
+    if not row.get("rls"):
+        return "RLS is off, so nothing else stops it. Turn RLS on or revoke the privilege."
+    return ""
 
 
 def _list(names: list[str]) -> str:
@@ -111,29 +128,30 @@ def judge(result: CheckResult, report: dict, target: Target) -> CheckResult:
         if not writes:
             continue
         seen[role].add(table)
+        partial = {str(c) for c in row.get("columns_only") or []}
+
+        def how(commands) -> str:
+            return ", ".join(f"{c} (some columns)" if c in partial else c for c in sorted(commands))
+
+        unguarded = _unguarded(row)
+        if unguarded:
+            # Declared or not: nothing but the privilege stands in the way.
+            add(
+                f"{role}_write_without_rls", "high" if role == "anon" else "medium", table,
+                f"{role} may {how(writes)} and {unguarded}",
+            )
+            continue
         extra = writes - declared[role].get(table, set())
         if not extra:
             continue
-        partial = {str(c) for c in row.get("columns_only") or []}
-        how = ", ".join(
-            f"{command} (some columns)" if command in partial else command for command in sorted(extra)
-        )
-        rls_on = bool(row.get("rls"))
-        is_view = row.get("kind") == "v"
-        if not rls_on and not is_view:
-            add(
-                f"{role}_write_without_rls", "high" if role == "anon" else "medium", table,
-                f"{role} may {how} and RLS is off, so nothing else stops it. Turn RLS on or "
-                f"revoke the privilege.",
-            )
-        elif any_declared:
+        if any_declared:
             add(
                 f"{role}_write_undeclared", "medium" if role == "anon" else "low", table,
-                f"{role} may {how}, which expected_table_writes does not list. RLS policies "
+                f"{role} may {how(extra)}, which expected_table_writes does not list. RLS policies "
                 "are then the only gate; revoke the privilege, or list it after reading the policies.",
             )
         else:
-            undeclared[role].append(f"{table} ({how})")
+            undeclared[role].append(f"{table} ({how(extra)})")
     for role, tables in undeclared.items():
         if tables:
             add(
@@ -143,12 +161,15 @@ def judge(result: CheckResult, report: dict, target: Target) -> CheckResult:
                 "the site needs and revoke the rest.",
             )
     for role, tables in truncate.items():
-        if tables:
-            result.notes.append(
-                f"{role} holds TRUNCATE on {len(tables)} tables ({_list(tables)}). TRUNCATE ignores "
+        if not tables:
+            continue
+        text = (f"{role} holds TRUNCATE on {len(tables)} tables ({_list(tables)}). TRUNCATE ignores "
                 "RLS; the Data API never issues it, but a function running as the caller could. "
-                "Revoke it with the write privileges you do not need."
-            )
+                "Revoke it with the write privileges you do not need.")
+        if role == "anon":
+            add("anon_truncate", "low", "role anon", text)
+        else:
+            result.notes.append(text)
     for role, tables in declared.items():
         stale = sorted(set(tables) - seen[role])
         if stale:

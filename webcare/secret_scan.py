@@ -155,9 +155,22 @@ def _handle_jwt_secret(match: re.Match) -> Verdict:
 _WELL_KNOWN_LOCAL_PASSWORDS = frozenset({"postgres", "supabase"})
 
 
+# Code that reads a password rather than holding one: process.env.X, os.getenv("X"),
+# settings.db.password, z.string().min(8), and the like.
+_CODE_REFERENCE = re.compile(r"^[A-Za-z_$][\w$]*(?:\.[\w$]+)+|^[A-Za-z_$][\w$.]*\(")
+_PLACEHOLDER_WORDS = re.compile(r"your|example|sample|placeholder|changeme|change[-_]me|dummy|redacted|xxx", re.I)
+
+
 def _handle_password_variable(match: re.Match) -> Verdict:
-    value = match.group("value")
-    if _PLACEHOLDER.match(value) or value.lower() in _WELL_KNOWN_LOCAL_PASSWORDS or value.startswith("$"):
+    single = match.group("single")
+    value = single if single is not None else (match.group("double") if match.group("double") is not None
+                                               else match.group("bare"))
+    if single is None and value.startswith("$"):
+        return None  # a shell or compose variable; single quotes would make it literal
+    if match.group("bare") is not None and _CODE_REFERENCE.match(value):
+        return None
+    if (len(value) < 6 or _PLACEHOLDER.match(value) or _PLACEHOLDER_WORDS.search(value)
+            or value.lower() in _WELL_KNOWN_LOCAL_PASSWORDS or " " in value.strip()):
         return None
     return (
         "database_password_variable",
@@ -229,9 +242,9 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         re.compile(
-            r"(?:^|[\s;'\"])(?:export\s+)?(?P<name>PGPASSWORD|POSTGRES_PASSWORD|SUPABASE_DB_PASSWORD|"
-            r"DB_PASSWORD|DATABASE_PASSWORD)\s*[:=]\s*[\"']?(?P<value>[^\s\"'#]{6,})",
-            re.MULTILINE,
+            r"(?<![A-Za-z0-9])(?:[A-Z0-9]+_)*(?P<name>PGPASSWORD|POSTGRES_PASSWORD|SUPABASE_DB_PASSWORD|"
+            r"DB_PASSWORD|DATABASE_PASSWORD)[\"']?\s*[:=]\s*"
+            r"(?:'(?P<single>[^'\n]*)'|\"(?P<double>[^\"\n]*)\"|(?P<bare>[^\s\"'#,;]+))",
         ),
         _handle_password_variable,
     ),
@@ -337,6 +350,26 @@ def scan_tree(
     return findings, stats
 
 
+def root_labels(roots: list[Path]) -> list[str]:
+    """The prefix each root's findings carry when several roots are scanned.
+
+    A root is named by its folder; two roots with the same folder name are named by
+    their path instead, so `apps/api` and `services/api` stay apart.
+    """
+    if len(roots) == 1:
+        return [""]
+    names = [root.resolve().name for root in roots]
+    labels = []
+    for root, name in zip(roots, names):
+        if names.count(name) > 1:
+            try:
+                name = root.resolve().relative_to(Path.cwd().resolve()).as_posix()
+            except ValueError:
+                name = root.resolve().as_posix().lstrip("/")
+        labels.append(f"{name}/")
+    return labels
+
+
 def run(
     roots: Iterable[Path],
     excludes: Iterable[str] = (),
@@ -352,9 +385,8 @@ def run(
         return result
 
     total = ScanStats()
-    for root in roots:
+    for root, prefix in zip(roots, root_labels(roots)):
         findings, stats = scan_tree(root, excludes, max_bytes, include_build)
-        prefix = "" if len(roots) == 1 else f"{root.resolve().name}/"
         for finding in findings:
             result.findings.append(
                 Finding(

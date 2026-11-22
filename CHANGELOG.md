@@ -3,6 +3,46 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.19.0
+Fixes from the second outside review (Gemini, 23 November 2026, of 1.16.0 to 1.18.0).
+- `table_writes`: a write privilege on a table with RLS off is reported even when the
+  table is declared in `expected_table_writes` (before, a declared table was skipped).
+  A view that runs with its owner's rights (no `security_invoker = true`) counts as
+  unguarded, since the base tables' RLS does not apply to the caller; a foreign table
+  cannot have RLS and is told so. TRUNCATE held by `anon` is now a low finding. Tables
+  with RLS off come first, so the row limit can never hide them.
+- Connection strings: `hostaddr` is refused, because it sends the connection to that
+  address whatever `host` says, past both the target match and the TLS rule. An
+  upper-case `sslmode` gets a clear message.
+- Function privileges from SQL files: argument types from other schemas stay apart
+  (`v1.payload` is not `v2.payload`); `ALTER FUNCTION ... RENAME TO` and `SET SCHEMA`
+  carry a function and its privileges to the new name.
+- `secdef_trusts_current_user`: strings and comments are removed in one pass, so a
+  comment marker inside a string no longer hides the code after it.
+- Database password rule: quoted values may hold `#` and other symbols; JSON keys and
+  prefixed names (`NEXT_PUBLIC_DB_PASSWORD`) are matched; a `$` inside single quotes
+  is a literal; code that reads a password (`process.env.X`, `os.getenv(...)`,
+  `z.string()`) and multi-word placeholders are no longer reported.
+- SARIF: paths with brackets (Next.js route groups) are placed; statements spread over
+  several lines and names in comments are handled; a finding is left out rather than
+  placed on the wrong file when two given SQL files share a name or the file lies
+  outside the current directory; every result carries a fingerprint that survives
+  line moves. Two scanned folders with the same name are told apart by their path.
+- Release workflow: the version is checked as a whole string, so a value with a line
+  break cannot add variables; write permission is granted to the job only; the
+  checkout action is pinned to a commit.
+
+Reviewed and left as is, with the reason:
+- An `INSERT` policy `TO public` gives every role INSERT on `storage.objects`, so
+  reporting a role that also lacks UPDATE is right.
+- `ALTER DEFAULT PRIVILEGES IN SCHEMA ... REVOKE EXECUTE ... FROM PUBLIC` changes
+  nothing in Postgres; only the global default carries PUBLIC's EXECUTE.
+- `checks = [...]` from the target file is applied before a refusal is reported.
+- Commands in `expected_table_writes` are lower-cased and validated when the file loads.
+- `.output` and `out` are not skipped, so they are already scanned;
+  `SUPABASE_JWT_SECRET` and `GOTRUE_JWT_SECRET` match the existing `*JWT_SECRET*` rule.
+- `pyproject.toml` keeps exact pins: these are the versions that were reviewed.
+
 ## 1.18.0
 Fixes from an outside review of 1.16.0 (Gemini, 23 November 2026).
 - Function privileges from SQL files: overloads are now kept apart. Before, a second

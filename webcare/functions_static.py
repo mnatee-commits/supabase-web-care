@@ -77,8 +77,13 @@ _SIGNATURE_MODES = {"i", "b", "v", "d"}  # IN, INOUT, VARIADIC, and IN by defaul
 
 
 def _type_name(type_name) -> str:
-    names = _string_values(getattr(type_name, "names", ()))
-    base = names[-1].lower() if names else "?"
+    names = [name.lower() for name in _string_values(getattr(type_name, "names", ()))]
+    if not names:
+        base = "?"
+    elif len(names) > 1 and names[-2] != "pg_catalog":
+        base = f"{names[-2]}.{names[-1]}"  # a type of the same name in another schema is another type
+    else:
+        base = names[-1]
     return base + "[]" * len(getattr(type_name, "arrayBounds", None) or ())
 
 
@@ -256,6 +261,20 @@ def _apply_file(replay: _Replay, path: Path, text: str) -> None:
                     "functions created after it are treated accordingly, which holds only "
                     "when the migrations run as the role that statement names"
                 )
+
+        elif (isinstance(statement, ast.RenameStmt) and statement.renameType in function_kinds) or (
+            isinstance(statement, ast.AlterObjectSchemaStmt) and statement.objectType in function_kinds
+        ):
+            # A function keeps its privileges when renamed or moved to another schema.
+            target = statement.object
+            name = _split_name(_string_values(getattr(target, "objname", ())))
+            for key in replay.matching(name, _object_signature(target)):
+                state = replay.functions.pop(key)
+                if isinstance(statement, ast.RenameStmt):
+                    state.name = statement.newname.lower()
+                else:
+                    state.schema = statement.newschema.lower()
+                replay.functions[(state.schema, state.name, key[2])] = state
 
         elif isinstance(statement, ast.DropStmt) and statement.removeType in function_kinds:
             for target in statement.objects or ():
