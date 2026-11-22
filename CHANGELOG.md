@@ -3,6 +3,15 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.16.0
+- New `inventory` and `compare` commands. `inventory` saves what one database is made
+  of (RLS state, table and column grants, default privileges, function and policy facts,
+  extensions, migration history, scheduled jobs, buckets) through a connection or
+  `--via-api`; function bodies and policy expressions leave only as md5 hashes.
+  `compare` reports what differs between two files, contacts nothing, and exits 1 on any
+  difference. The statements ran on a real Supabase project (Postgres 17); the whole
+  command has run against the test database only.
+
 ## 1.15.0
 - A target can switch optional checks on with `checks = [...]` and set `lang` in
   `webcare.toml`. Flags on the command line still win; the report notes which checks

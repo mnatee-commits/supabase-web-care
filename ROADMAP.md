@@ -18,31 +18,25 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.10 | Baseline for file checks; CI examples | Locally; the example workflow has not run on GitHub Actions |
 | 1.11 | Scheduled jobs a target expects (`expected_cron_jobs`) | Yes |
 | 1.12 | Report in English or Thai (`--lang`) | Yes |
-| 1.15 | Optional checks and report language switched on from the target file | Test suite only; the switch reuses checks that are verified |
 | 1.13–1.14.1 | Supabase's own security lints (`--with-advisors`); default privileges of new tables | 1.14.0 ran against a real project and showed the parser counted wrongly; fixed in 1.14.1, not yet re-run |
+| 1.15 | Optional checks and report language switched on from the target file | Test suite only; the switch reuses checks that are verified |
+| 1.16 | Comparing two environments (`inventory`, `compare`) | Statements ran on a real project; the whole command against the test database only |
 
 ## In progress
 
-2. **Comparing two targets.** Save an inventory of each target (migration
-   history, RLS state, table and column grants, default privileges, scheduled
-   jobs, functions callable without signing in), then report what differs. Two
-   environments that drift apart was the most common real finding while this
-   tool was being built: a backup script pointing at the wrong database, jobs
-   that existed in one environment only, a column restriction applied to one
-   environment and not the other.
+1. **Declared table grants.** Let a target state which tables each API role may
+   write to, so that write privileges left over from defaults are reported.
 
 ## Planned, not started
 
-3. **Declared table grants.** Let a target state which tables each API role may
-   write to, so that write privileges left over from defaults are reported.
-4. **SARIF output**, so CI can show findings on the lines of a pull request.
-5. **Platform settings** such as SSL enforcement and network restrictions. The
+2. **SARIF output**, so CI can show findings on the lines of a pull request.
+3. **Platform settings** such as SSL enforcement and network restrictions. The
    Management API endpoints for these have not been checked yet.
-6. **Thai text for each finding's detail.** Headings are translated already.
+4. **Thai text for each finding's detail.** Headings are translated already.
 
 ## Waiting on a decision
 
-7. **Probing as a signed-in test user.** Policies that exist but restrict too
+5. **Probing as a signed-in test user.** Policies that exist but restrict too
    little are a common cause of leaks, and only a signed-in request shows them.
    Signing in writes session rows, and may write an application's own audit
    rows, so this needs a design that the owner of each project accepts. Staging

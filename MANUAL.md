@@ -230,6 +230,26 @@ python -m webcare check --snapshot staging.json --target <target name> --skip se
 - If the target declares `rest` and `WEBCARE_ANON_KEY` is set, the HEAD probe still works, using the table list from the snapshot.
 - A snapshot file carries no Storage, scheduled-job, backup, log or sign-in information; those need route 1.
 
+### Comparing two environments
+
+Staging and production that drift apart are a common cause of trouble: a job
+that exists in one only, a column restriction applied to one and not the other,
+a migration that never reached production. Save an inventory of each, then
+compare the two files.
+
+```bash
+python -m webcare inventory --target staging --via-api --out staging.inv.json
+python -m webcare inventory --target production --via-api --owner-approved --out production.inv.json
+python -m webcare compare staging.inv.json production.inv.json --lang th
+```
+
+- `inventory` works over either route: a direct connection as `webcare_auditor`, or `--via-api`. It sends single SELECT statements only, the same way the checks do, and the same refusals apply (`--owner-approved` for real data or production).
+- It reads, for the schemas declared on the target: tables and views with their RLS state and the privileges of `anon`, `authenticated`, `service_role` and `PUBLIC`; column privileges; default privileges; functions (`SECURITY DEFINER` or not, whether `anon` and `authenticated` may call them, whether `search_path` is pinned); policies (command, roles, permissive or not); extensions; the migration history; scheduled job names and schedules; and buckets.
+- **Function bodies and policy expressions leave the database only as md5 hashes.** Two environments with the same hash have the same text; a different hash tells you to read both in their own databases. The file holds no data row, no function body and no policy expression.
+- A part the route cannot see is recorded as "not read" with the reason (for example the migration history is not readable by `webcare_auditor`, or pg_cron is not installed), and `compare` reports it as "not compared" instead of guessing.
+- `compare` contacts nothing. It writes `compare.md` and `compare.json`: for each part, what only the first has, what only the second has, and what differs. It exits 1 when anything differs, so it can gate a deploy.
+- An inventory file holds names of tables, columns, functions, policies, migrations and jobs. Store it as you would a report.
+
 ## Guard rails
 
 The tool refuses, and contacts nothing, when

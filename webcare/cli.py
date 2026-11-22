@@ -5,6 +5,8 @@
     probe         ask the Data API what an anonymous visitor can read (HEAD only)
     preflight     show what the connecting database role is able to do
     snapshot-sql  print the read-only statement that takes a catalog snapshot
+    inventory     save what one database is made of (names, grants, hashes) to a file
+    compare       report what differs between two inventory files (offline)
 
 Offline checks need no configuration. Live checks need a target declared in
 webcare.toml; credentials come from environment variables, never from flags.
@@ -13,6 +15,7 @@ webcare.toml; credentials come from environment variables, never from flags.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -20,7 +23,7 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from . import (
-    __version__, advisors, anon_probe, api_snapshot, auth_config, backups, baseline, functions_static, health, live, logs, pgrls_runner, secret_scan,
+    __version__, advisors, anon_probe, api_snapshot, auth_config, backups, baseline, functions_static, health, inventory, live, logs, pgrls_runner, secret_scan,
     snapshot, storage_buckets,
 )
 from .model import ERROR, NOT_RUN, CheckResult, Refusal, severity_at_least
@@ -208,6 +211,29 @@ def build_parser() -> argparse.ArgumentParser:
     snapshot_sql.add_argument("--label", help="label written into the snapshot; must equal the target name used later")
     snapshot_sql.add_argument("--schema", action="append", default=[], help="schema to cover; repeatable (default: public)")
     snapshot_sql.set_defaults(handler=cmd_snapshot_sql)
+
+    inv = commands.add_parser(
+        "inventory",
+        help="save what one database is made of to a file, for `compare`",
+        description="Reads names, RLS state, grants, default privileges, migration history, "
+        "scheduled jobs, buckets, and md5 hashes of function bodies and policy expressions. "
+        "No row of an application table, no function body and no policy expression is read.",
+    )
+    inv.add_argument("--target", required=True, help="declared target")
+    inv.add_argument("--out", required=True, help="file to write the inventory to")
+    inv.add_argument("--via-api", action="store_true", help="read through the Management API read-only endpoint")
+    inv.add_argument("--token-env", default=api_snapshot.DEFAULT_TOKEN_ENV,
+                     help=f"environment variable holding the access token (default: {api_snapshot.DEFAULT_TOKEN_ENV})")
+    _add_target_options(inv)
+    _add_database_options(inv)
+    inv.set_defaults(handler=cmd_inventory)
+
+    cmp = commands.add_parser("compare", help="report what differs between two inventory files; contacts nothing")
+    cmp.add_argument("first", help="inventory file, e.g. of staging")
+    cmp.add_argument("second", help="inventory file, e.g. of production")
+    cmp.add_argument("--out-dir", default=DEFAULT_OUT_DIR, help=f"where compare.md and compare.json go (default: {DEFAULT_OUT_DIR})")
+    cmp.add_argument("--lang", choices=LANGUAGES, default=None, help="language of compare.md headings")
+    cmp.set_defaults(handler=cmd_compare)
     return parser
 
 
@@ -280,6 +306,73 @@ def cmd_preflight(args: argparse.Namespace) -> int:
     else:
         print("ok:         this role cannot write to application tables")
     return 0
+
+
+def cmd_inventory(args: argparse.Namespace) -> int:
+    connection = None
+    try:
+        target = get_target(Path(args.config), args.target)
+        if args.via_api:
+            ask = api_snapshot.asker(target, args.owner_approved, args.token_env)
+            route = f"Management API read-only endpoint of project {target.project_ref}"
+        else:
+            dsn = os.environ.get(args.db_env, "")
+            if not dsn:
+                raise Refusal(f"environment variable {args.db_env} is not set (or use --via-api)")
+            connection, endpoint, _facts = live.open_checked(
+                target, dsn, args.owner_approved, args.allow_privileged_role
+            )
+            ask = inventory.connection_asker(connection)
+            route = endpoint.describe()
+        data = inventory.collect(ask, target)
+    except Refusal as refusal:
+        print(f"refused: {refusal}", file=sys.stderr)
+        return EXIT_REFUSED
+    finally:
+        if connection is not None:
+            connection.close()
+    out = Path(args.out)
+    try:
+        inventory.write(out, data)
+    except OSError as error:
+        print(f"could not write {out} ({type(error).__name__})", file=sys.stderr)
+        return EXIT_REFUSED
+    for name, part in data["parts"].items():
+        state = f"{len(part['rows'])} entries" if "rows" in part else f"not read: {part['not_read']}"
+        print(f"  {name:<14} {state}")
+    print(f"inventory of {target.describe()} through {route}: {out}")
+    return 0
+
+
+def cmd_compare(args: argparse.Namespace) -> int:
+    try:
+        first, second = inventory.load(Path(args.first)), inventory.load(Path(args.second))
+    except Refusal as refusal:
+        print(f"refused: {refusal}", file=sys.stderr)
+        return EXIT_REFUSED
+    lang = args.lang or (os.environ.get(LANGUAGE_ENV) if os.environ.get(LANGUAGE_ENV) in LANGUAGES else DEFAULT_LANGUAGE)
+    result = inventory.compare(first, second)
+    markdown = inventory.to_markdown(first, second, result, lang)
+    out = Path(args.out_dir)
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "compare.md").write_text(markdown, encoding="utf-8")
+        (out / "compare.json").write_text(
+            json.dumps({"first": first["label"], "second": second["label"], "parts": result},
+                       ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    except OSError as error:
+        print(f"could not write to {out} ({type(error).__name__})", file=sys.stderr)
+        return EXIT_REFUSED
+    for name in inventory.PART_ORDER:
+        part = result[name]
+        if "not_compared" in part:
+            print(f"  {name:<14} not compared ({part['not_compared']})")
+        else:
+            print(f"  {name:<14} only {first['label']}={len(part['only_first'])} "
+                  f"only {second['label']}={len(part['only_second'])} different={len(part['changed'])}")
+    total = inventory.differences(result)
+    print(f"{total} differences: {out / 'compare.md'}")
+    return 1 if total else 0
 
 
 def cmd_snapshot_sql(args: argparse.Namespace) -> int:
