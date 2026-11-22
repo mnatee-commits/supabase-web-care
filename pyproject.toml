@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "supabase-web-care"
+version = "1.18.0"
+description = "Read-only security and health checks for Supabase and Postgres-backed sites"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+# Exact pins, the same as requirements.txt. For an install whose every file is
+# checked against a hash, use `pip install --require-hashes -r requirements.lock`.
+dependencies = [
+    "pgrls==0.57.1",
+    "psycopg[binary]==3.3.9",
+    "pglast==7.24",
+]
+
+[project.urls]
+Homepage = "https://github.com/mnatee-commits/supabase-web-care"
+Changelog = "https://github.com/mnatee-commits/supabase-web-care/blob/main/CHANGELOG.md"
+
+[project.scripts]
+webcare = "webcare.cli:main"
+
+[tool.setuptools]
+packages = ["webcare", "webcare.sql_files"]
+package-dir = {"webcare.sql_files" = "sql"}
+
+[tool.setuptools.package-data]
+"webcare.sql_files" = ["*.sql"]

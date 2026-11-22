@@ -10,3 +10,5 @@ __pycache__/
 # hand-written role, check and fixture definitions with synthetic rows only.
 *.dump
 *.sql.gz
+build/
+*.egg-info/

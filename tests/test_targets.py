@@ -110,3 +110,19 @@ def test_rest_url_must_match_the_declaration(config):
         sim.ensure_rest_matches("https://example.supabase.co")
     with pytest.raises(Refusal, match="no `rest`"):
         get_target(config, "copy").ensure_rest_matches("http://127.0.0.1:54321")
+
+
+def test_public_database_hosts_must_use_tls():
+    from webcare.targets import with_tls
+
+    local = "host=127.0.0.1 port=5432 dbname=app user=a password=p"
+    assert with_tls(local) == local
+    assert with_tls("host=localhost dbname=app") == "host=localhost dbname=app"
+    assert "sslmode=require" in with_tls("host=db.example.supabase.co dbname=postgres user=a")
+    assert with_tls("postgresql://a@db.example.com:5432/app").endswith("/app?sslmode=require")
+    assert with_tls("postgresql://a@db.example.com/app?application_name=x").endswith("&sslmode=require")
+    kept = "host=db.example.com dbname=app sslmode=verify-full"
+    assert with_tls(kept) == kept
+    for weak in ("disable", "allow", "prefer"):
+        with pytest.raises(Refusal, match="sslmode"):
+            with_tls(f"host=db.example.com dbname=app sslmode={weak}")

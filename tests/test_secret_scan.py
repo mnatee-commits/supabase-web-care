@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from conftest import FAKE_PASSWORD, ROOT, fake_pg_url, make_jwt
 from webcare import secret_scan
@@ -110,3 +111,30 @@ def test_clean_tree_passes_and_missing_path_errors(tmp_path):
 def test_this_toolkit_carries_no_credentials():
     result = secret_scan.run([ROOT])
     assert result.status == "PASS", [(f.rule, f.location) for f in result.findings]
+
+
+def test_database_password_variables():
+    pg, supa = "PG" + "PASSWORD", "SUPABASE_DB_" + "PASSWORD"  # split so this file does not match itself
+    found = rules(f"{pg}={FAKE_PASSWORD}\nexport {supa}='{FAKE_PASSWORD}'\n")
+    assert found.get("database_password_variable") == "high"
+    for harmless in ("PGPASSWORD=postgres", "POSTGRES_PASSWORD: ${{ secrets.DB }}", "DB_PASSWORD=$DB_PASSWORD",
+                     "DATABASE_PASSWORD=<your password>", "MY_PGPASSWORD_HINT=see-docs"):
+        assert "database_password_variable" not in rules(harmless), harmless
+
+
+def test_build_output_is_skipped_unless_asked(tmp_path):
+    (tmp_path / "dist").mkdir()
+    (tmp_path / "dist" / "app.js").write_text(f"const k = 'sb_secret_{'a' * 24}';\n")
+    assert secret_scan.run([tmp_path]).findings == []
+    found = secret_scan.run([tmp_path], include_build=True).findings
+    assert [f.location for f in found] == ["dist/app.js:1"]
+
+
+def test_several_roots_are_named_even_the_current_directory(tmp_path, monkeypatch):
+    first, second = tmp_path / "site", tmp_path / "other"
+    for root in (first, second):
+        root.mkdir()
+        (root / "k.txt").write_text(f"sb_secret_{'b' * 24}\n")
+    monkeypatch.chdir(first)
+    locations = sorted(f.location for f in secret_scan.run([Path("."), second]).findings)
+    assert locations == ["other/k.txt:1", "site/k.txt:1"]

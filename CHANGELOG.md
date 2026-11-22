@@ -3,6 +3,30 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.18.0
+Fixes from an outside review of 1.16.0 (Gemini, 23 November 2026).
+- Function privileges from SQL files: overloads are now kept apart. Before, a second
+  `CREATE FUNCTION` with the same name and other argument types replaced the first in
+  the replay, so an open `SECURITY DEFINER` overload could go unreported; a GRANT,
+  REVOKE, ALTER or DROP naming argument types now touches that overload only.
+- Database connections to a host that is not loopback or private must be encrypted:
+  `sslmode=require` is added when none is given, and `disable`, `allow` and `prefer`
+  are refused. Applies to the toolkit's own connection and to pgrls.
+- Credential scan: new rule for database passwords assigned to `PGPASSWORD`,
+  `POSTGRES_PASSWORD`, `SUPABASE_DB_PASSWORD`, `DB_PASSWORD` or `DATABASE_PASSWORD`;
+  `--include-build` scans build output; with several roots, `.` is named by its folder.
+- A refused `--via-api` run now gives the refusal as the reason for every check asked
+  for, not "not asked for". A probe with no database connection and no `--table` says
+  so instead of failing quietly.
+- `storage_upsert_incomplete` counts policies granted to `public`;
+  `secdef_trusts_current_user` ignores block comments; the log summary compares
+  function names without regard to case; `inventory` sorts policy roles, so the same
+  roles in another order are no longer a difference.
+- `pyproject.toml`: `pip install .` installs a `webcare` command, with the SQL files
+  inside the package. `requirements.txt` names every direct dependency.
+- Documents brought up to date: Security Advisor is read by `--with-advisors`; four
+  optional GET endpoints; CI no longer needs a deploy key now that the repository is public.
+
 ## 1.17.0
 - Releases: pushing a tag `vX.Y.Z`, or running the `release` workflow on main, publishes a
   GitHub Release whose notes are this file's

@@ -116,7 +116,7 @@ def plain_parts(schemas: list[str]) -> dict[str, str]:
          jsonb_build_object(
            'command', pol.cmd,
            'permissive', pol.permissive,
-           'roles', to_jsonb(pol.roles),
+           'roles', (select coalesce(jsonb_agg(r order by r), '[]'::jsonb) from unnest(pol.roles) r),
            'expression_md5', md5(coalesce(pol.qual, '') || '|' || coalesce(pol.with_check, ''))
          ) as v
     from pg_catalog.pg_policies pol

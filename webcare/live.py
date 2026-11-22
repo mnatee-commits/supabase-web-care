@@ -13,10 +13,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from . import sql_dir
 from .model import ERROR, CheckResult, Finding, Refusal
-from .targets import DbEndpoint, Target
+from .targets import DbEndpoint, Target, with_tls
 
-EXTRA_CHECKS_FILE = Path(__file__).resolve().parent.parent / "sql" / "extra-checks.sql"
+EXTRA_CHECKS_FILE = sql_dir() / "extra-checks.sql"
 RELATION_KINDS = ("r", "p", "v", "m", "f")
 OVERRIDE_FLAG = "--allow-privileged-role"
 MAX_ROWS_PER_EXTRA_CHECK = 500
@@ -138,6 +139,7 @@ def connect(dsn: str):
         raise Refusal(
             "live database checks need psycopg, which is installed together with pgrls"
         ) from error
+    dsn = with_tls(dsn)
     try:
         connection = psycopg.connect(dsn, connect_timeout=10, row_factory=dict_row)
     except psycopg.Error as error:

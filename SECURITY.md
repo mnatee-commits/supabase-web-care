@@ -16,7 +16,8 @@ real system. A description and a synthetic example are enough.
 - Every statement it sends to a database is a single SELECT that it built
   itself; a guard refuses anything else before it leaves.
 - Through the Supabase Management API it uses the read-only query endpoint,
-  and three GET endpoints only when asked with their own flags.
+  and four GET endpoints (backups, logs, sign-in settings, security advisors)
+  only when asked with their own flags.
 - It never calls a project's RPC functions and never sends INSERT, PATCH or
   DELETE to a Data API.
 - Credentials come from environment variables and are not written to reports.

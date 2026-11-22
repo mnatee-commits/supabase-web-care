@@ -447,3 +447,16 @@ def test_unknown_optional_checks_and_languages_are_refused(tmp_path):
         config.write_text(base + extra)
         with pytest.raises(Refusal):
             get_target(config, "t")
+
+
+def test_a_refused_api_run_gives_the_real_reason_for_every_check_asked_for(tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv(api_snapshot.DEFAULT_TOKEN_ENV, raising=False)
+    config = tmp_path / "webcare.toml"
+    config.write_text(f'[[target]]\nname = "staging"\nenv = "staging"\ndata = "synthetic"\nproject_ref = "{REF}"\n')
+    code, checks, _ = run_cli(tmp_path, capsys, "--via-api", "--with-advisors", "--target", "staging",
+                              "--config", str(config))
+    assert code == 2
+    for check_id in ("advisors", "storage_buckets", "table_writes", "health_cron"):
+        assert checks[check_id]["status"] == "NOT_RUN"
+        assert "not asked for" not in checks[check_id]["reason"]
+        assert api_snapshot.DEFAULT_TOKEN_ENV in checks[check_id]["reason"], checks[check_id]["reason"]

@@ -293,8 +293,10 @@ allowlist = ["service_role"]   # service_role bypasses RLS by Supabase's design
 ## Limits
 
 - The credential scan looks at files on disk only, not at git history. A key that was committed and later removed is still in the history and must be rotated.
+- The credential scan skips build output (`dist`, `build`, `.next`, `.nuxt`, `.svelte-kit`) unless given `--include-build`. Build the site and scan with that flag to see what the browser receives.
+- A connection to a database host that is not loopback or private must be encrypted: `sslmode=require` is added when the connection string names none, and `disable`, `allow` and `prefer` are refused, because libpq falls back to plain text with them. For a hostname on a private network without TLS, use its IP address.
 - The anonymous-access probe has been tested against a stand-in server only, not against a real PostgREST. See the "not verified" list in `docs/OFFLINE_VM.md`.
-- Security Advisor needs the internet and is run separately, through the Supabase MCP server or CLI.
+- Security Advisor needs the internet. `--via-api --with-advisors` reads it; otherwise run it separately, through the Supabase MCP server or CLI.
 - The function checks look at EXECUTE privileges and patterns in the code. They do not judge whether a function's body checks its caller correctly. A function listed in `expected_anon_functions` still needs someone to read its code.
 - The log summary covers the last 24 hours only and counts requests; it cannot tell you whether a function that was open in the past was called before that window. The manual checklist describes how to look further back.
 - The `webcare_auditor` role can reach whatever is granted to `PUBLIC`, like every role. The tool reports such objects and does not use them.

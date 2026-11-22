@@ -92,18 +92,27 @@ select jsonb_build_object(
     ), '[]'::jsonb),
     'storage_upsert_incomplete', coalesce((
       select jsonb_agg(to_jsonb(q)) from (
-        with per_role as (
-          select
-            r.role_name,
-            bool_or(p.cmd in ('INSERT', 'ALL')) as can_insert,
-            bool_or(p.cmd in ('SELECT', 'ALL')) as can_select,
-            bool_or(p.cmd in ('UPDATE', 'ALL')) as can_update
+        with pol as (
+          select p.cmd, p.roles
           from pg_catalog.pg_policies p
-          cross join lateral unnest(p.roles) as r(role_name)
           where p.schemaname = 'storage'
             and p.tablename = 'objects'
             and p.permissive = 'PERMISSIVE'
-          group by r.role_name
+        ),
+        named as (
+          select distinct r.role_name
+          from pol
+          cross join lateral unnest(pol.roles) as r(role_name)
+        ),
+        per_role as (
+          select
+            n.role_name,
+            bool_or(pol.cmd in ('INSERT', 'ALL')) as can_insert,
+            bool_or(pol.cmd in ('SELECT', 'ALL')) as can_select,
+            bool_or(pol.cmd in ('UPDATE', 'ALL')) as can_update
+          from named n
+          join pol on n.role_name = any(pol.roles) or 'public' = any(pol.roles)
+          group by n.role_name
         )
         select
           'storage.objects (role ' || role_name || ')' as location,
@@ -145,7 +154,9 @@ select jsonb_build_object(
               and d.deptype = 'e'
           )
           and regexp_replace(
-                regexp_replace(p.prosrc, '--[^\n]*', '', 'g'),
+                regexp_replace(
+                  regexp_replace(p.prosrc, '/\*.*?\*/', '', 'g'),
+                  '--[^\n]*', '', 'g'),
                 '''(?:[^'']|'''')*''', '', 'g'
               ) ~* '\mcurrent_(user|role)\M'
         order by 1

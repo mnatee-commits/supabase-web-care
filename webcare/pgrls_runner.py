@@ -170,7 +170,9 @@ def run_lint(
         if key != "DATABASE_URL" and not key.startswith("WEBCARE_")
     }
     if not offline:
-        environment["DATABASE_URL"] = database_url
+        from .targets import with_tls
+
+        environment["DATABASE_URL"] = with_tls(database_url)
         if force_read_only:
             environment["PGOPTIONS"] = "-c default_transaction_read_only=on"
     else:

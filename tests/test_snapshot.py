@@ -60,7 +60,7 @@ def test_committed_statement_matches_the_generator_and_is_one_select():
     live.assert_single_select(body)
     for check in live.load_extra_checks():
         assert f"'{check.id}'" in text  # every live catalog check travels in the snapshot
-    assert "prosrc" not in text.replace("p.prosrc, '--", "")  # bodies are tested, never returned
+    assert "prosrc" not in text.replace("p.prosrc, '/\\*", "")  # bodies are tested, never returned
 
 
 @pytest.mark.parametrize("schemas, label", [

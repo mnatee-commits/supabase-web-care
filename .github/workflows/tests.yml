@@ -16,7 +16,7 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_PASSWORD: local-ci-only
+          POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
         options: >-
@@ -37,7 +37,7 @@ jobs:
         env:
           # The service container above exists only for this job.
           WEBCARE_TEST_ADMIN_DSN: host=127.0.0.1 port=5432 user=postgres dbname=postgres
-          PGPASSWORD: local-ci-only
+          PGPASSWORD: postgres
         run: python -m pytest -q
       - name: The toolkit finds no credential in its own tree
         run: python -m webcare secrets . --fail-on high

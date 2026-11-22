@@ -185,3 +185,37 @@ def test_do_blocks_are_called_out(tmp_path):
     result = run(tmp_path, "do $$ begin perform 1; end $$;\n")
     assert result.status == "PASS"
     assert any("DO block" in note for note in result.notes)
+
+
+def test_overloads_are_kept_apart(tmp_path):
+    # A second overload must not hide the first, and a REVOKE naming one overload
+    # must not close the other; a statement with no argument list covers both.
+    result = run(
+        tmp_path,
+        f"create function public.search(q integer) returns int {DEFINER};\n",
+        "create function public.search(q text) returns int language sql as $$ select 1 $$;\n"
+        "revoke all on function public.search(text) from public, anon;\n",
+    )
+    assert rules(result) == [("secdef_public_execute", "public.search")]
+    assert "0001_migration.sql:1" in result.findings[0].location
+    closed_one = run(
+        tmp_path,
+        f"create function public.search(q integer) returns int {DEFINER};\n"
+        f"create function public.search(q text, out n int) returns int {DEFINER};\n"
+        "revoke all on function public.search(int4) from public, anon;\n",
+    )
+    assert [f.location for f in closed_one.findings] == ["public.search (0001_migration.sql:2)"]
+    closed_all = run(
+        tmp_path,
+        f"create function public.search(q integer) returns int {DEFINER};\n"
+        f"create function public.search(q text) returns int {DEFINER};\n"
+        "revoke all on function public.search from public, anon;\n",
+    )
+    assert closed_all.findings == []
+    dropped = run(
+        tmp_path,
+        f"create function public.search(q integer) returns int {DEFINER};\n"
+        f"create function public.search(q text) returns int {DEFINER};\n"
+        "drop function public.search(text);\n",
+    )
+    assert [f.location for f in dropped.findings] == ["public.search (0001_migration.sql:1)"]

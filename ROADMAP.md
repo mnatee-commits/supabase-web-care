@@ -22,6 +22,7 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.15 | Optional checks and report language switched on from the target file | Test suite only; the switch reuses checks that are verified |
 | 1.16 | Comparing two environments (`inventory`, `compare`) | Statements ran on a real project; the whole command against the test database only |
 | 1.17 | Declared table grants (`table_writes`, `expected_table_writes`); SARIF output (`--sarif`) | The table statement ran on a real project; SARIF has not been uploaded to GitHub yet |
+| 1.18 | Fixes from an outside review: function overloads, TLS for database connections, password variables, build output, `pip install .` | Test suite; the changed catalog checks ran on a real project |
 
 ## In progress
 

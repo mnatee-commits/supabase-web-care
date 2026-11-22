@@ -22,12 +22,13 @@ import re
 from pathlib import Path
 from typing import Iterable, Optional, Sequence, Union
 
+from . import sql_dir
 from . import live
 from .model import CheckResult, Refusal
 from .targets import Target
 
 FORMAT = "webcare-catalog-snapshot/1"
-SNAPSHOT_SQL_FILE = Path(__file__).resolve().parent.parent / "sql" / "catalog-snapshot.sql"
+SNAPSHOT_SQL_FILE = sql_dir() / "catalog-snapshot.sql"
 DEFAULT_LABEL = "unlabelled"
 MAX_BYTES = 20 * 1024 * 1024
 

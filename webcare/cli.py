@@ -112,6 +112,7 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--repo", action="append", default=[], help="source tree for the credential scan; repeatable (default: .)")
     check.add_argument("--exclude", action="append", default=[], help="glob of paths the credential scan skips; repeatable")
     check.add_argument("--max-bytes", type=int, default=secret_scan.DEFAULT_MAX_BYTES, help="largest file the credential scan reads")
+    check.add_argument("--include-build", action="store_true", help="also scan build output (dist, build, .next, .nuxt, .svelte-kit), where a key baked into the front end lives")
     check.add_argument("--migrations", help="directory of .sql migrations, linted in file-name order")
     check.add_argument("--sql-file", action="append", default=[], help="SQL file to lint, in the order given; repeatable")
     check.add_argument("--exclude-sql", action="append", default=[], help="glob of migration file names to leave out; repeatable")
@@ -185,6 +186,7 @@ def build_parser() -> argparse.ArgumentParser:
     secrets.add_argument("paths", nargs="*", default=["."], help="files or directories (default: .)")
     secrets.add_argument("--exclude", action="append", default=[], help="glob of paths to skip; repeatable")
     secrets.add_argument("--max-bytes", type=int, default=secret_scan.DEFAULT_MAX_BYTES)
+    secrets.add_argument("--include-build", action="store_true", help="also scan build output (dist, build, .next, .nuxt, .svelte-kit)")
     secrets.add_argument("--fail-on", default="high", choices=["high", "medium", "low", "never"])
     secrets.add_argument("--show-info", action="store_true", help="also list public keys found (inventory)")
     secrets.set_defaults(handler=cmd_secrets)
@@ -259,7 +261,7 @@ def _exit_code(result: CheckResult, fail_on: str) -> int:
 
 
 def cmd_secrets(args: argparse.Namespace) -> int:
-    result = secret_scan.run([Path(p) for p in args.paths], args.exclude, args.max_bytes)
+    result = secret_scan.run([Path(p) for p in args.paths], args.exclude, args.max_bytes, args.include_build)
     _print_findings(result, args.show_info)
     print(f"{result.status}: {result.evidence}")
     return _exit_code(result, args.fail_on)
@@ -420,10 +422,20 @@ def _snapshot_checks(
         if target is not None:
             snapshot.ensure_matches(data, target)
     except Refusal as refusal:
-        refused = [
-            _not_run(check_id, str(refusal))
-            for check_id in ("extra_live", "functions_live", "health_cron", "anon_probe")
-        ]
+        refused_ids = ["extra_live", "functions_live", "health_cron", "anon_probe"]
+        if via_api:
+            refused_ids += ["storage_buckets", "table_writes"]
+            refused_ids += [
+                check_id
+                for check_id, asked in (
+                    ("advisors", args.with_advisors),
+                    ("auth_config", args.with_auth_config),
+                    ("health_backups", args.with_backups),
+                    ("health_logs", args.with_logs),
+                )
+                if asked
+            ]
+        refused = [_not_run(check_id, str(refusal)) for check_id in refused_ids]
         return [no_pgrls] + refused, f"{label} (ถูกปฏิเสธ)" if thai else f"{label} (refused)"
 
     results = [no_pgrls] + snapshot.run_checks(data, source, target)
@@ -661,7 +673,17 @@ def _live_checks(
         else:
             requested.add("anon_probe")
             tables = list(args.table)
-            if not tables and connection is not None:
+            if not tables and connection is None:
+                results.append(
+                    _not_run(
+                        "anon_probe",
+                        "no table to probe: without a database connection the tool cannot list "
+                        "what anon may read; name tables with --table",
+                    )
+                )
+                requested.discard("anon_probe")
+                return results
+            if not tables:
                 tables = live.anon_readable_relations(connection, args.probe_schema)
                 if not tables:
                     results.append(
@@ -727,7 +749,7 @@ def cmd_check(args: argparse.Namespace) -> int:
 
     if "secrets" not in skip:
         requested.add("secrets")
-        checks.append(secret_scan.run(repos, args.exclude, args.max_bytes))
+        checks.append(secret_scan.run(repos, args.exclude, args.max_bytes, args.include_build))
 
     sql_files: list[Path] = []
     if "static" not in skip:

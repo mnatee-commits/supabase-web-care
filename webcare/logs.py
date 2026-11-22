@@ -55,7 +55,7 @@ def window(now: Optional[datetime] = None) -> tuple[str, str]:
 
 def _expected_names(target: Target) -> set[str]:
     """Function names from the allowlist, without schema or argument list."""
-    return {re.sub(r"\(.*$", "", entry).split(".")[-1].strip() for entry in target.expected_anon_functions}
+    return {re.sub(r"\(.*$", "", entry).split(".")[-1].strip().lower() for entry in target.expected_anon_functions}
 
 
 def _number(value) -> int:
@@ -112,7 +112,7 @@ def judge(result: CheckResult, answer, target: Target, start: str, end: str) -> 
         if target.expected_anon_functions:
             expected = _expected_names(target)
             for name, count in sorted(anon_calls.items(), key=lambda item: -item[1]):
-                if name not in expected:
+                if name.lower() not in expected:
                     add(
                         "log_anon_rpc_unexpected", "medium", f"rpc/{name}",
                         f"called successfully {count} times without signing in, and it is not "

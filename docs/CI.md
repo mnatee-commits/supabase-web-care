@@ -25,11 +25,9 @@ commands inside it were tested locally.
 2. **Copy** `docs/examples/webcare-migrations.yml` to `.github/workflows/` in
    the site's repository and edit the three values marked in the file.
 
-3. **While this toolkit's repository is private**, the site's repository needs
-   read access to it. Create a read-only deploy key on this repository and
-   store its private half as a secret named `WEBCARE_DEPLOY_KEY` in the site's
-   repository. Once this repository is public, delete the secret and the
-   `ssh-key` line.
+3. **Pin a release.** Use the full commit hash of a release you have read
+   (see the repository's Releases page), never a branch name. This repository
+   is public, so no key is needed to fetch it.
 
 ## What the workflow does
 

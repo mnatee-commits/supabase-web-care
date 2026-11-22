@@ -71,6 +71,32 @@ def _split_name(parts: Sequence[str]) -> tuple[str, str]:
     return DEFAULT_SCHEMA, parts[-1].lower()
 
 
+Signature = Optional[tuple[str, ...]]  # argument types; None when a statement names no list
+FunctionKey = tuple[str, str, tuple[str, ...]]
+_SIGNATURE_MODES = {"i", "b", "v", "d"}  # IN, INOUT, VARIADIC, and IN by default; not OUT or TABLE
+
+
+def _type_name(type_name) -> str:
+    names = _string_values(getattr(type_name, "names", ()))
+    base = names[-1].lower() if names else "?"
+    return base + "[]" * len(getattr(type_name, "arrayBounds", None) or ())
+
+
+def _create_signature(statement) -> tuple[str, ...]:
+    kinds = []
+    for parameter in statement.parameters or ():
+        mode = getattr(parameter.mode, "value", parameter.mode)
+        if str(mode) in _SIGNATURE_MODES:
+            kinds.append(_type_name(parameter.argType))
+    return tuple(kinds)
+
+
+def _object_signature(target) -> Signature:
+    if getattr(target, "args_unspecified", False):
+        return None
+    return tuple(_type_name(t) for t in getattr(target, "objargs", None) or ())
+
+
 def _string_values(nodes) -> list[str]:
     return [node.sval for node in nodes or () if hasattr(node, "sval")]
 
@@ -96,14 +122,21 @@ class _Replay:
     """State of every function after the statements seen so far."""
 
     def __init__(self) -> None:
-        self.functions: dict[tuple[str, str], FunctionState] = {}
+        self.functions: dict[FunctionKey, FunctionState] = {}
         self.public_revoked_by_default = False
         self.notes: list[str] = []
 
     def in_schema(self, schema: str) -> Iterable[FunctionState]:
         return [state for state in self.functions.values() if state.schema == schema]
 
-    def create(self, key: tuple[str, str], file: str, line: int, replace: bool) -> FunctionState:
+    def matching(self, name: tuple[str, str], signature: Signature) -> list[FunctionKey]:
+        """Keys a statement refers to: one overload, or every overload when no list is given."""
+        if signature is not None:
+            key = (*name, signature)
+            return [key] if key in self.functions else []
+        return [key for key in self.functions if key[:2] == name]
+
+    def create(self, key: FunctionKey, file: str, line: int, replace: bool) -> FunctionState:
         existing = self.functions.get(key)
         if existing is not None and replace:
             # CREATE OR REPLACE keeps the privileges of the function it replaces.
@@ -148,6 +181,19 @@ def _line_of(text: str, offset: int) -> int:
     return text.count("\n", 0, position) + 1
 
 
+def _alter(state: FunctionState, actions, enums) -> None:
+    for action in actions or ():
+        if action.defname == "security":
+            state.definer = bool(getattr(action.arg, "boolval", False))
+        elif action.defname == "set":
+            kind = getattr(action.arg, "kind", None)
+            name = getattr(action.arg, "name", "") or ""
+            if kind == enums.VariableSetKind.VAR_RESET_ALL:
+                state.pins_search_path = False
+            elif name == "search_path":
+                state.pins_search_path = kind != enums.VariableSetKind.VAR_RESET
+
+
 def _apply_file(replay: _Replay, path: Path, text: str) -> None:
     from pglast import ast, enums, parse_sql
 
@@ -162,7 +208,7 @@ def _apply_file(replay: _Replay, path: Path, text: str) -> None:
         line = _line_of(text, raw.stmt_location or 0)
 
         if isinstance(statement, ast.CreateFunctionStmt):
-            key = _split_name(_string_values(statement.funcname))
+            key = (*_split_name(_string_values(statement.funcname)), _create_signature(statement))
             state = replay.create(key, path.name, line, bool(statement.replace))
             state.definer = False
             state.pins_search_path = False
@@ -178,20 +224,9 @@ def _apply_file(replay: _Replay, path: Path, text: str) -> None:
                     )
 
         elif isinstance(statement, ast.AlterFunctionStmt):
-            key = _split_name(_string_values(statement.func.objname))
-            state = replay.functions.get(key)
-            if state is None:
-                continue
-            for action in statement.actions or ():
-                if action.defname == "security":
-                    state.definer = bool(getattr(action.arg, "boolval", False))
-                elif action.defname == "set":
-                    kind = getattr(action.arg, "kind", None)
-                    name = getattr(action.arg, "name", "") or ""
-                    if kind == enums.VariableSetKind.VAR_RESET_ALL:
-                        state.pins_search_path = False
-                    elif name == "search_path":
-                        state.pins_search_path = kind != enums.VariableSetKind.VAR_RESET
+            name = _split_name(_string_values(statement.func.objname))
+            for key in replay.matching(name, _object_signature(statement.func)):
+                _alter(replay.functions[key], statement.actions, enums)
 
         elif isinstance(statement, ast.GrantStmt) and statement.objtype in function_kinds:
             if not _covers_execute(statement.privileges):
@@ -203,10 +238,9 @@ def _apply_file(replay: _Replay, path: Path, text: str) -> None:
                         replay.apply_acl(state, grantees, bool(statement.is_grant))
             elif statement.targtype == enums.GrantTargetType.ACL_TARGET_OBJECT:
                 for target in statement.objects or ():
-                    key = _split_name(_string_values(getattr(target, "objname", ())))
-                    state = replay.functions.get(key)
-                    if state is not None:
-                        replay.apply_acl(state, grantees, bool(statement.is_grant))
+                    name = _split_name(_string_values(getattr(target, "objname", ())))
+                    for key in replay.matching(name, _object_signature(target)):
+                        replay.apply_acl(replay.functions[key], grantees, bool(statement.is_grant))
 
         elif isinstance(statement, ast.AlterDefaultPrivilegesStmt):
             action = statement.action
@@ -225,7 +259,9 @@ def _apply_file(replay: _Replay, path: Path, text: str) -> None:
 
         elif isinstance(statement, ast.DropStmt) and statement.removeType in function_kinds:
             for target in statement.objects or ():
-                replay.functions.pop(_split_name(_string_values(getattr(target, "objname", ()))), None)
+                name = _split_name(_string_values(getattr(target, "objname", ())))
+                for key in replay.matching(name, _object_signature(target)):
+                    replay.functions.pop(key, None)
 
         elif isinstance(statement, ast.DoStmt):
             replay.notes.append(

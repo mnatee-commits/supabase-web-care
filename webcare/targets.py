@@ -145,6 +145,41 @@ def parse_dsn(dsn: str) -> DbEndpoint:
     )
 
 
+SECURE_SSLMODES = ("require", "verify-ca", "verify-full")
+
+
+def with_tls(dsn: str) -> str:
+    """The connection string, made to refuse an unencrypted session to a public host.
+
+    libpq's default (`prefer`) falls back to plain text when encryption cannot be
+    set up, which someone on the path can force. For a host that is not loopback
+    or private, `sslmode` must be require or stricter; when it is missing,
+    require is added. `disable`, `allow` and `prefer` are refused.
+    """
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+    try:
+        info = conninfo_to_dict(dsn)
+    except Exception:
+        raise Refusal("the database connection string could not be parsed") from None
+    host = str(info.get("host") or "").lower()
+    if _is_private_host(host):
+        return dsn
+    mode = str(info.get("sslmode") or "")
+    if mode in SECURE_SSLMODES:
+        return dsn
+    if mode:
+        raise Refusal(
+            f"the connection string sets sslmode={mode} for a public host, which lets the "
+            "session run unencrypted; use sslmode=require or stricter"
+        )
+    if dsn.lstrip().lower().startswith(("postgres://", "postgresql://")):
+        # Keep the URL form, which every client understands.
+        base, _, fragment = dsn.partition("#")
+        return base + ("&" if "?" in base else "?") + "sslmode=require" + (f"#{fragment}" if fragment else "")
+    return make_conninfo(dsn, sslmode="require")
+
+
 def _normalize_db(declared: str, target_name: str) -> str:
     try:
         address, database = declared.rsplit("/", 1)

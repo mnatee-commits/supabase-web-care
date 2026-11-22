@@ -36,6 +36,7 @@ SKIP_DIRS = frozenset(
         "webcare-output",
     }
 )
+BUILD_DIRS = frozenset({"dist", "build", ".next", ".nuxt", ".svelte-kit"})
 DEFAULT_MAX_BYTES = 2_000_000
 
 # Put this text on a line to silence findings on that line, for a fixture or a
@@ -151,6 +152,20 @@ def _handle_jwt_secret(match: re.Match) -> Verdict:
     )
 
 
+_WELL_KNOWN_LOCAL_PASSWORDS = frozenset({"postgres", "supabase"})
+
+
+def _handle_password_variable(match: re.Match) -> Verdict:
+    value = match.group("value")
+    if _PLACEHOLDER.match(value) or value.lower() in _WELL_KNOWN_LOCAL_PASSWORDS or value.startswith("$"):
+        return None
+    return (
+        "database_password_variable",
+        "high",
+        f"database password assigned to {match.group('name')} in a file",
+    )
+
+
 def _handle_public_env_name(match: re.Match) -> Verdict:
     return (
         "secret_in_public_env_name",
@@ -213,6 +228,14 @@ RULES: tuple[Rule, ...] = (
         _handle_dsn_keyword,
     ),
     Rule(
+        re.compile(
+            r"(?:^|[\s;'\"])(?:export\s+)?(?P<name>PGPASSWORD|POSTGRES_PASSWORD|SUPABASE_DB_PASSWORD|"
+            r"DB_PASSWORD|DATABASE_PASSWORD)\s*[:=]\s*[\"']?(?P<value>[^\s\"'#]{6,})",
+            re.MULTILINE,
+        ),
+        _handle_password_variable,
+    ),
+    Rule(
         re.compile(r"-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----"),
         lambda match: ("private_key_block", "high", "private key block"),
     ),
@@ -271,13 +294,13 @@ def _excluded(relative: str, excludes: Iterable[str]) -> bool:
     return any(fnmatch.fnmatch(relative, pattern) for pattern in excludes)
 
 
-def _iter_files(root: Path, excludes: tuple[str, ...]):
+def _iter_files(root: Path, excludes: tuple[str, ...], skip_dirs: frozenset = SKIP_DIRS):
     """Yield (path, relative posix path) for regular files under root."""
     if root.is_file():
         yield root, root.name
         return
     for directory, subdirs, files in os.walk(root, followlinks=False):
-        subdirs[:] = sorted(d for d in subdirs if d not in SKIP_DIRS)
+        subdirs[:] = sorted(d for d in subdirs if d not in skip_dirs)
         for name in sorted(files):
             path = Path(directory) / name
             if path.is_symlink() or not path.is_file():
@@ -292,10 +315,12 @@ def scan_tree(
     root: Path,
     excludes: Iterable[str] = (),
     max_bytes: int = DEFAULT_MAX_BYTES,
+    include_build: bool = False,
 ) -> tuple[list[Finding], ScanStats]:
     findings: list[Finding] = []
     stats = ScanStats()
-    for path, relative in _iter_files(root, tuple(excludes)):
+    skip_dirs = SKIP_DIRS - BUILD_DIRS if include_build else SKIP_DIRS
+    for path, relative in _iter_files(root, tuple(excludes), skip_dirs):
         try:
             if path.stat().st_size > max_bytes:
                 stats.skipped_large += 1
@@ -316,6 +341,7 @@ def run(
     roots: Iterable[Path],
     excludes: Iterable[str] = (),
     max_bytes: int = DEFAULT_MAX_BYTES,
+    include_build: bool = False,
 ) -> CheckResult:
     result = CheckResult(id="secrets", title="Credentials left in the source tree")
     roots = [Path(root) for root in roots]
@@ -327,8 +353,8 @@ def run(
 
     total = ScanStats()
     for root in roots:
-        findings, stats = scan_tree(root, excludes, max_bytes)
-        prefix = "" if len(roots) == 1 else f"{root.name}/"
+        findings, stats = scan_tree(root, excludes, max_bytes, include_build)
+        prefix = "" if len(roots) == 1 else f"{root.resolve().name}/"
         for finding in findings:
             result.findings.append(
                 Finding(

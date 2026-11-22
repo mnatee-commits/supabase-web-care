@@ -23,12 +23,10 @@ jobs:
       - name: Fetch the toolkit at a reviewed commit
         uses: actions/checkout@v4
         with:
-          repository: OWNER/supabase-web-care  # EDIT 2: where the toolkit lives
-          ref: 0000000000000000000000000000000000000000  # EDIT 3: a full commit hash you reviewed, never a branch
+          repository: mnatee-commits/supabase-web-care  # EDIT 2: or your fork
+          ref: 0000000000000000000000000000000000000000  # EDIT 3: the full commit hash of a release you reviewed, never a branch
           path: .webcare
           persist-credentials: false
-          # While the toolkit repository is private, give this job a read-only deploy key:
-          # ssh-key: ${{ secrets.WEBCARE_DEPLOY_KEY }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"

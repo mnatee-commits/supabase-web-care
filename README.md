@@ -42,6 +42,7 @@ Full manual: [MANUAL.md](MANUAL.md) (English) Â· [README_TH.md](README_TH.md) (à
 | Whether the platform holds a backup | Management API, opt-in |
 | 24-hour API log summary, counts only | Management API, opt-in |
 | Sign-in settings, reduced to an allowlist so no secret is kept | Management API, opt-in |
+| Supabase's own security lints (Security Advisor) | Management API, opt-in |
 | What an anonymous visitor can read (HEAD requests only) | Data API |
 | What differs between two environments (`inventory`, then `compare`) | database or Management API |
 
@@ -49,7 +50,8 @@ Full manual: [MANUAL.md](MANUAL.md) (English) Â· [README_TH.md](README_TH.md) (à
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
-pip install --require-hashes -r requirements.lock
+pip install --require-hashes -r requirements.lock   # every file checked against a hash
+# or: pip install .   then run `webcare` instead of `python -m webcare`
 python -m webcare check --repo <web project> --migrations <migrations folder>
 ```
 
@@ -81,8 +83,8 @@ This toolkit is a thin layer. It is meant to sit beside these, not replace them.
   that mode off production.
 - **Supabase Security Advisor** (dashboard, `supabase db advisors`, or the MCP
   `get_advisors` tool) is the platform's own check and sees things this
-  toolkit does not. Run it every time; the report lists it as not run because
-  the toolkit cannot call it.
+  toolkit does not. `--with-advisors` reads it through the Management API;
+  without that route the report lists it as not run, so run it yourself.
 - **Supabase's official agent skills**, `supabase` and
   `supabase-postgres-best-practices`. The skill in this repository tells an
   agent to consult them and adds a working method and guard rails on top.

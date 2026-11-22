@@ -17,12 +17,14 @@ revoke all on function public.staff_report() from public, anon;
 grant execute on function public.staff_report() to authenticated;
 
 -- A guard that identifies the caller. The comment below mentions
--- current_user and a string does too; neither is code.
+-- current_user, and so do a block comment and a string; none of them is code.
 create function private.guard() returns void
 language plpgsql security definer set search_path = ''
 as $$
 begin
   -- current_user would name the owner here, so it is not used
+  /* nor is current_role,
+     which a block comment may mention too */
   if session_user = 'postgres' then
     return;
   end if;

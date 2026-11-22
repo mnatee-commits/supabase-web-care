@@ -8,7 +8,7 @@ refuses writes whatever this code sends. Nothing here accepts SQL from outside:
 every statement is built by this package and checked to be a single SELECT
 before it leaves.
 
-Two other endpoints exist, each only when the operator asks for it. With
+Four other endpoints exist, each only when the operator asks for it. With
 `--with-backups`: a GET of the project's backup list (`backups.py`), which
 carries no SQL and returns no data from the database. With `--with-logs`: a
 GET of the log query endpoint carrying one fixed counting query (`logs.py`).
