@@ -193,6 +193,7 @@ unset WEBCARE_ACCESS_TOKEN
   still pass through the memory of the machine that runs the check for a
   moment, so run it only on a machine you trust. Supabase documents the
   `auth_config_read` permission for this.
+- **Optional checks can be switched on in the target file.** Add `checks = ["advisors", "auth_config", "backups", "logs"]` and `lang = "th"` to a target in `webcare.toml`, and one short command runs them all. Flags on the command line still win, and the report says which checks the file switched on.
 - **The token is read from `WEBCARE_ACCESS_TOKEN`**, not from
   `SUPABASE_ACCESS_TOKEN`. That second name is what the Supabase CLI reads,
   and on a developer's machine it usually holds an account-wide token that can

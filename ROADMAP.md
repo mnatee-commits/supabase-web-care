@@ -18,13 +18,11 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.10 | Baseline for file checks; CI examples | Locally; the example workflow has not run on GitHub Actions |
 | 1.11 | Scheduled jobs a target expects (`expected_cron_jobs`) | Yes |
 | 1.12 | Report in English or Thai (`--lang`) | Yes |
+| 1.15 | Optional checks and report language switched on from the target file | Test suite only; the switch reuses checks that are verified |
 | 1.13–1.14.1 | Supabase's own security lints (`--with-advisors`); default privileges of new tables | 1.14.0 ran against a real project and showed the parser counted wrongly; fixed in 1.14.1, not yet re-run |
 
 ## In progress
 
-1. **Optional checks switched on from the target file.** Today every optional
-   check needs its own flag. A target should be able to say which optional checks
-   it wants, so one short command runs everything.
 2. **Comparing two targets.** Save an inventory of each target (migration
    history, RLS state, table and column grants, default privileges, scheduled
    jobs, functions callable without signing in), then report what differs. Two

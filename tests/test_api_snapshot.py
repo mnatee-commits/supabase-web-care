@@ -415,3 +415,31 @@ def test_advisors_are_read_only_when_asked_and_a_long_lint_stays_short(api, tmp_
     api.mode = "advisors_403"
     _code, checks, _text = run_cli(tmp_path, capsys, *arguments, "--with-advisors")
     assert checks["advisors"]["status"] == "ERROR" and "advisors_read" in checks["advisors"]["reason"]
+
+
+def test_the_target_file_can_switch_on_optional_checks_and_the_language(api, tmp_path, capsys):
+    config = tmp_path / "webcare.toml"
+    config.write_text(
+        f'[[target]]\nname = "staging"\nenv = "staging"\ndata = "synthetic"\nproject_ref = "{REF}"\n'
+        'checks = ["advisors", "backups"]\nlang = "th"\n'
+    )
+    arguments = ("--via-api", "--target", "staging", "--config", str(config))
+    _code, checks, _text = run_cli(tmp_path, capsys, *arguments)
+    gets = sorted(path for method, path, _, _ in api.seen if method == "GET")
+    assert gets == [f"/v1/projects/{REF}/advisors/security", f"/v1/projects/{REF}/database/backups"]
+    assert checks["advisors"]["status"] != "NOT_RUN" and checks["health_backups"]["status"] != "NOT_RUN"
+    assert checks["auth_config"]["status"] == "NOT_RUN" and checks["health_logs"]["status"] == "NOT_RUN"
+    assert any("switched on by the target" in note for note in checks["advisors"]["notes"])
+    assert "# รายงาน Supabase Web Care" in (tmp_path / "out" / "report.md").read_text()
+
+    _code, _checks, _text = run_cli(tmp_path, capsys, *arguments, "--lang", "en")
+    assert "# Supabase Web Care report" in (tmp_path / "out" / "report.md").read_text()
+
+
+def test_unknown_optional_checks_and_languages_are_refused(tmp_path):
+    base = f'[[target]]\nname = "t"\nenv = "staging"\ndata = "synthetic"\nproject_ref = "{REF}"\n'
+    for extra in ('checks = ["advisors", "everything"]\n', 'checks = "advisors"\n', 'lang = "fr"\n'):
+        config = tmp_path / "webcare.toml"
+        config.write_text(base + extra)
+        with pytest.raises(Refusal):
+            get_target(config, "t")

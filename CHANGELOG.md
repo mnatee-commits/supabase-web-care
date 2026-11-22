@@ -3,6 +3,12 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.15.0
+- A target can switch optional checks on with `checks = [...]` and set `lang` in
+  `webcare.toml`. Flags on the command line still win; the report notes which checks
+  the file switched on. `--lang` no longer has a fixed default: it falls back to the
+  target's `lang`, then `WEBCARE_LANG`, then English.
+
 ## 1.14.1
 - `--with-advisors`: the real endpoint answers with one entry per flagged object, not one per
   lint. 1.13.0 and 1.14.0 counted each entry as one object and named none; entries are now

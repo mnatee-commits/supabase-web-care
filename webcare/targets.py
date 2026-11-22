@@ -25,6 +25,9 @@ DATA_KINDS = ("synthetic", "real")
 DEFAULT_CONFIG_NAME = "webcare.toml"
 APPROVAL_FLAG = "--owner-approved"
 _PROJECT_REF = re.compile(r"^[a-z]{20}$")
+# Optional checks a target may switch on in webcare.toml, instead of a --with-... flag each.
+OPTIONAL_CHECKS = ("advisors", "auth_config", "backups", "logs")
+REPORT_LANGUAGES = ("en", "th")
 
 
 @dataclass(frozen=True)
@@ -44,6 +47,8 @@ class Target:
     expected_open_signup: bool = False  # anyone may create an account, on purpose
     advisors_ignore: tuple[str, ...] = field(default_factory=tuple)  # Security Advisor lints already reviewed
     expected_cron_jobs: tuple[str, ...] = field(default_factory=tuple)  # pg_cron jobs that must exist
+    optional_checks: tuple[str, ...] = field(default_factory=tuple)  # switched on without a flag
+    lang: Optional[str] = None  # language of report.md for this target
 
     @property
     def needs_owner_approval(self) -> bool:
@@ -224,8 +229,29 @@ def load_targets(path: Path) -> dict[str, Target]:
             expected_open_signup=entry.get("expected_open_signup") is True,
             advisors_ignore=_lint_names(entry.get("advisors_ignore", []), path, name),
             expected_cron_jobs=tuple(str(j) for j in entry.get("expected_cron_jobs", [])),
+            optional_checks=_optional_checks(entry.get("checks", []), path, name),
+            lang=_language(entry.get("lang"), path, name),
         )
     return targets
+
+
+def _optional_checks(value, path: Path, target: str) -> tuple[str, ...]:
+    names = tuple(str(item) for item in value) if isinstance(value, list) else ()
+    unknown = [item for item in names if item not in OPTIONAL_CHECKS]
+    if unknown or (value and not isinstance(value, list)):
+        raise Refusal(
+            f"{path}: target {target!r} lists checks {', '.join(map(repr, unknown)) or repr(value)}; "
+            f"the optional checks are {', '.join(OPTIONAL_CHECKS)}"
+        )
+    return names
+
+
+def _language(value, path: Path, target: str) -> Optional[str]:
+    if value is None:
+        return None
+    if value not in REPORT_LANGUAGES:
+        raise Refusal(f"{path}: target {target!r} has lang {value!r}; use one of {', '.join(REPORT_LANGUAGES)}")
+    return str(value)
 
 
 def _lint_names(value, path: Path, target: str) -> tuple[str, ...]:

@@ -27,6 +27,8 @@ db = "127.0.0.1:5432/app_sim"          # host:port/database
 # expected_public_buckets = ["site-images"]   # buckets that are meant to be public
 # expected_open_signup = true                 # anyone may create an account, on purpose
 # advisors_ignore = ["authenticated_security_definer_function_executable"]  # Security Advisor lints you have reviewed
+# checks = ["advisors", "auth_config", "backups", "logs"]   # optional --via-api checks to run without a flag each
+# lang = "th"                                  # language of report.md for this target
 # expected_cron_jobs = ["nightly_cleanup"]     # pg_cron jobs that must exist and be active
 
 # [[target]]

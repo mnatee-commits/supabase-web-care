@@ -166,9 +166,9 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--out-dir", default=DEFAULT_OUT_DIR, help=f"where report.md and report.json go (default: {DEFAULT_OUT_DIR})")
     check.add_argument("--fail-on", default="high", choices=["high", "medium", "low", "never"], help="lowest severity that makes the exit code 1 (default: high)")
     check.add_argument(
-        "--lang", choices=LANGUAGES,
-        default=os.environ.get(LANGUAGE_ENV) if os.environ.get(LANGUAGE_ENV) in LANGUAGES else DEFAULT_LANGUAGE,
-        help=f"language of report.md (default: {DEFAULT_LANGUAGE}, or the {LANGUAGE_ENV} environment variable)",
+        "--lang", choices=LANGUAGES, default=None,
+        help=f"language of report.md (default: the target's `lang`, then the {LANGUAGE_ENV} "
+        f"environment variable, then {DEFAULT_LANGUAGE})",
     )
     check.add_argument("--json", action="store_true", help="print the JSON report instead of the summary")
     _add_target_options(check)
@@ -585,7 +585,33 @@ def _live_checks(
     return results
 
 
+def _apply_target_settings(args: argparse.Namespace) -> list[str]:
+    """Switch on what the target file asks for; flags given on the command line still win.
+
+    Returns the optional checks the file switched on, so the report can say so.
+    """
+    switched: list[str] = []
+    target = None
+    if args.target:
+        try:
+            target = get_target(Path(args.config), args.target)
+        except Refusal:
+            target = None  # reported, with its reason, by the live checks
+    if target is not None:
+        for name in target.optional_checks:
+            if not getattr(args, f"with_{name}"):
+                setattr(args, f"with_{name}", True)
+                switched.append(name)
+        if args.lang is None:
+            args.lang = target.lang
+    if args.lang is None:
+        from_env = os.environ.get(LANGUAGE_ENV)
+        args.lang = from_env if from_env in LANGUAGES else DEFAULT_LANGUAGE
+    return switched
+
+
 def cmd_check(args: argparse.Namespace) -> int:
+    switched = _apply_target_settings(args)
     skip = set(args.skip)
     requested: set[str] = set()
     checks: list[CheckResult] = []
@@ -673,6 +699,10 @@ def cmd_check(args: argparse.Namespace) -> int:
             return EXIT_REFUSED
 
     source = "; ".join(f"{repo.resolve()} ({_git_revision(repo)})" for repo in repos)
+    if switched:
+        for check in checks:
+            if check.id in switched and check.status != NOT_RUN:
+                check.notes.append("switched on by the target's `checks` in the target file")
     report = Report(checks=checks, source=source, target=target_text, requested=requested, lang=args.lang)
     try:
         written = report.write(Path(args.out_dir))
