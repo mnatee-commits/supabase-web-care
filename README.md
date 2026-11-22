@@ -37,6 +37,7 @@ Full manual: [MANUAL.md](MANUAL.md) (English) Â· [README_TH.md](README_TH.md) (à
 | Who may call `SECURITY DEFINER` functions, against a declared allowlist | SQL files, database, or Management API |
 | Policy and default-privilege problems pgrls does not cover | database or Management API |
 | Storage buckets: public access, anonymous writes, upload limits | Management API |
+| Tables `anon` and `authenticated` may write to, against a declared list | database or Management API |
 | Scheduled jobs (pg_cron) that failed or stopped | Management API |
 | Whether the platform holds a backup | Management API, opt-in |
 | 24-hour API log summary, counts only | Management API, opt-in |
@@ -56,7 +57,8 @@ Live checks need a target declared in `webcare.toml`; copy
 `webcare.example.toml`. Credentials come from environment variables only.
 
 To check migrations on every pull request, see [docs/CI.md](docs/CI.md) and
-the example workflow in `docs/examples/`. What has and has not been verified
+the example workflow in `docs/examples/`. `--sarif` also writes `report.sarif`, so
+code scanning can show findings on the lines of a pull request. What has and has not been verified
 against a real system is listed at the end of [docs/OFFLINE_VM.md](docs/OFFLINE_VM.md).
 
 `report.md` is written in English by default; pass `--lang th` (or set `WEBCARE_LANG=th`) for Thai.

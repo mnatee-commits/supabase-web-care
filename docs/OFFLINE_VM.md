@@ -109,7 +109,7 @@ python -m webcare check --target <target name> --via-api --skip secrets --skip s
 unset WEBCARE_ACCESS_TOKEN
 ```
 
-The tool sends up to five single SELECT statements to the project's read-only
+The tool sends up to six single SELECT statements to the project's read-only
 endpoint. HTTP 403 means the token lacks Database Read for that project.
 Revoke the token when you are done.
 
@@ -188,4 +188,6 @@ synthetic data. Dates are 22 November 2026 unless stated.
 | `sql/auditor-role.sql` on a real Supabase project, where the administrator is not a superuser | The role was created without error on the author's staging project (Postgres 17.11). Logging in as that role has not been tested, because the VM could not reach Postgres. | Run `preflight` from a machine that can reach Postgres |
 | Catalog snapshot (`snapshot-sql`, `check --snapshot`) on a real Supabase project | The statement ran on the author's staging project (Postgres 17.11) and found the 19 functions callable without signing in, matching Security Advisor's lint 0028. Saving the SQL Editor's result to a file and feeding it to the tool has not been tested. | Follow "When the VM cannot reach Postgres" |
 | Comparing two environments (`inventory`, `compare`) | The six catalog statements and the migration-history statement ran on the author's staging project (Postgres 17.11) through the Supabase connector, as `postgres`: 107 tables, 61 column grants, 28 default-privilege entries, 374 functions, 72 policies, 7 extensions, 195 migrations, about 130 KB together. The whole command has run against the test database only; whether `supabase_read_only_user` can read the migration history through `--via-api` has not been tested. | Run `inventory --via-api` against two projects and `compare` the files |
+| Tables the API roles may write to (`table_writes`) | The statement ran on the author's staging project (Postgres 17.11) through the Supabase connector, as `postgres`: `anon` could write to 9 tables and `authenticated` to 22, all with RLS on, matching a separate read of the same grants. Not yet run through `--via-api` as `supabase_read_only_user`. | Run `check --via-api` and compare with the table privileges shown in the dashboard |
+| SARIF output (`--sarif`) | Built and checked against the SARIF 2.1.0 structure by the test suite only; not yet uploaded to GitHub code scanning. | Follow the SARIF section of `docs/CI.md` in a public repository |
 | Postgres versions other than 16 | The 1.1 test suite passed on Postgres 17.12 on the VM. Checks added later were tested on 16, and in CI on 16. | Run `python -m pytest tests` again on the VM |

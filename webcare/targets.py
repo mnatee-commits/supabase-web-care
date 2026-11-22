@@ -28,6 +28,9 @@ _PROJECT_REF = re.compile(r"^[a-z]{20}$")
 # Optional checks a target may switch on in webcare.toml, instead of a --with-... flag each.
 OPTIONAL_CHECKS = ("advisors", "auth_config", "backups", "logs")
 REPORT_LANGUAGES = ("en", "th")
+TABLE_WRITE_ROLES = ("anon", "authenticated")
+TABLE_WRITE_COMMANDS = ("insert", "update", "delete")
+_TABLE_WRITE = re.compile(r"^([a-z_][a-z0-9_$]*\.)?[a-z_][a-z0-9_$]*(:(insert|update|delete)(,(insert|update|delete))*)?$")
 
 
 @dataclass(frozen=True)
@@ -49,6 +52,12 @@ class Target:
     expected_cron_jobs: tuple[str, ...] = field(default_factory=tuple)  # pg_cron jobs that must exist
     optional_checks: tuple[str, ...] = field(default_factory=tuple)  # switched on without a flag
     lang: Optional[str] = None  # language of report.md for this target
+    # writes the site needs: ((role, ("schema.table" or "schema.table:insert,update", ...)), ...)
+    table_writes: tuple[tuple[str, tuple[str, ...]], ...] = field(default_factory=tuple)
+
+    @property
+    def expected_table_writes(self) -> dict[str, tuple[str, ...]]:
+        return dict(self.table_writes)
 
     @property
     def needs_owner_approval(self) -> bool:
@@ -231,6 +240,7 @@ def load_targets(path: Path) -> dict[str, Target]:
             expected_cron_jobs=tuple(str(j) for j in entry.get("expected_cron_jobs", [])),
             optional_checks=_optional_checks(entry.get("checks", []), path, name),
             lang=_language(entry.get("lang"), path, name),
+            table_writes=_table_writes(entry.get("expected_table_writes"), path, name),
         )
     return targets
 
@@ -252,6 +262,33 @@ def _language(value, path: Path, target: str) -> Optional[str]:
     if value not in REPORT_LANGUAGES:
         raise Refusal(f"{path}: target {target!r} has lang {value!r}; use one of {', '.join(REPORT_LANGUAGES)}")
     return str(value)
+
+
+def _table_writes(value, path: Path, target: str) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, dict):
+        raise Refusal(
+            f"{path}: target {target!r} has expected_table_writes that is not a table such as "
+            '{ authenticated = ["public.notes:insert,update"] }'
+        )
+    pairs = []
+    for role, entries in value.items():
+        if role not in TABLE_WRITE_ROLES:
+            raise Refusal(
+                f"{path}: target {target!r} lists expected_table_writes for role {role!r}; "
+                f"the roles judged are {', '.join(TABLE_WRITE_ROLES)}"
+            )
+        if not isinstance(entries, list):
+            raise Refusal(f"{path}: target {target!r}: expected_table_writes.{role} must be a list")
+        for entry in entries:
+            if not isinstance(entry, str) or not _TABLE_WRITE.match(entry.strip().lower()):
+                raise Refusal(
+                    f"{path}: target {target!r} lists expected_table_writes.{role} entry {entry!r}; "
+                    'write "schema.table", or "schema.table:insert,update" to allow only some commands'
+                )
+        pairs.append((role, tuple(e.strip().lower() for e in entries)))
+    return tuple(pairs)
 
 
 def _lint_names(value, path: Path, target: str) -> tuple[str, ...]:

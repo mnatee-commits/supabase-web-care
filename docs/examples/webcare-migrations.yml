@@ -46,3 +46,12 @@ jobs:
         with:
           name: webcare-report
           path: webcare-output/report.md
+      # Optional: show findings on the lines of the pull request. Needs a public repository, or
+      # GitHub Code Security on a private one. Add --sarif to the check above,
+      # `security-events: write` under permissions, then uncomment:
+      # - name: Upload findings for code scanning
+      #   if: always()
+      #   uses: github/codeql-action/upload-sarif@v3
+      #   with:
+      #     sarif_file: webcare-output/report.sarif
+      #     category: webcare

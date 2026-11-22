@@ -8,7 +8,7 @@ import pytest
 from test_snapshot import make_snapshot
 from urllib.parse import parse_qs, urlsplit
 
-from webcare import api_snapshot, auth_config, health, live, logs, snapshot, storage_buckets
+from webcare import api_snapshot, auth_config, health, live, logs, snapshot, storage_buckets, table_writes
 from webcare.cli import main
 from webcare.model import Refusal
 from webcare.targets import Target, get_target
@@ -49,6 +49,9 @@ class FakeManagementApi(BaseHTTPRequestHandler):
         elif f"'{storage_buckets.FORMAT}'" in query:
             answer = [{"storage": {"format": storage_buckets.FORMAT, "taken_at": "2026-01-02T00:00:00Z",
                                    "buckets": type(self).buckets, "unscoped_policies": []}}]
+        elif f"'{table_writes.FORMAT}'" in query:
+            answer = [{"table_writes": {"format": table_writes.FORMAT, "taken_at": "2026-01-02T00:00:00Z",
+                                        "roles": ["anon", "authenticated"], "tables": []}}]
         elif f"'{health.FORMAT}'" in query:
             answer = [{"health": {"format": health.FORMAT, "taken_at": "2026-01-02T00:00:00Z",
                                   "window_days": 7, "jobs": type(self).jobs}}]
@@ -280,8 +283,9 @@ def test_check_via_api_end_to_end(api, tmp_path, capsys, monkeypatch):
     assert checks["health_cron"]["status"] == "PASS"
     assert "Management API" in checks["health_cron"]["evidence"]
     assert checks["storage_buckets"]["status"] == "PASS"
-    # the snapshot, then a probe and a query each for Storage and pg_cron: all to the read-only endpoint
-    assert [(method, path) for method, path, _, _ in api.seen] == [("POST", PATH)] * 5
+    assert checks["table_writes"]["status"] == "PASS"
+    # the snapshot, a probe and a query each for Storage and pg_cron, and the table privileges
+    assert [(method, path) for method, path, _, _ in api.seen] == [("POST", PATH)] * 6
     for _, _, _, body in api.seen:
         live.assert_single_select(json.loads(body)["query"])
 
@@ -290,7 +294,7 @@ def test_check_via_api_end_to_end(api, tmp_path, capsys, monkeypatch):
     code, checks, text = run_cli(tmp_path, capsys, "--via-api", "--target", "staging", "--config", str(config))
     assert checks["health_cron"]["status"] == "NOT_RUN" and "not installed" in checks["health_cron"]["reason"]
     assert checks["storage_buckets"]["status"] == "NOT_RUN"
-    assert len(api.seen) == 3 and code == 1  # probes only; a missing pg_cron or Storage is not a failure
+    assert len(api.seen) == 4 and code == 1  # probes and table privileges only; a missing pg_cron or Storage is not a failure
     api.probe = dict(api.probe, installed=True)
 
     api.mode = "403"

@@ -38,6 +38,19 @@ commands inside it were tested locally.
 - Fails on a new finding of high severity (change with `--fail-on`)
 - Attaches `report.md` to the run as an artifact
 
+## Findings on the lines of a pull request
+
+Add `--sarif` to the check, and the tool also writes `webcare-output/report.sarif`.
+The commented step at the end of the example workflow uploads it, so GitHub shows
+each finding on the line of the migration that caused it. This needs a public
+repository, or GitHub Code Security on a private one, and `security-events: write`.
+
+The file holds only findings tied to a file line: credentials, function privileges
+replayed from SQL files, and pgrls findings, placed on the first statement in the
+given files that creates the table, view, function or policy (a text search, not a
+parse). Everything else stays in `report.md`, and the file records how many
+findings it left out. An empty SARIF file is not a clean report.
+
 ## Limits
 
 - The result depends on file order. If file names do not sort in the order the migrations were applied, name files one by one with `--sql-file`.

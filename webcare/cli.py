@@ -24,7 +24,7 @@ from typing import Optional, Sequence
 
 from . import (
     __version__, advisors, anon_probe, api_snapshot, auth_config, backups, baseline, functions_static, health, inventory, live, logs, pgrls_runner, secret_scan,
-    snapshot, storage_buckets,
+    sarif, snapshot, storage_buckets, table_writes,
 )
 from .model import ERROR, NOT_RUN, CheckResult, Refusal, severity_at_least
 from .report import DEFAULT_LANGUAGE, LANGUAGE_ENV, LANGUAGES, Report
@@ -42,6 +42,7 @@ TITLES = {
     "extra_live": "Catalog checks beyond pgrls",
     "functions_live": "SECURITY DEFINER functions callable without signing in",
     "storage_buckets": storage_buckets.TITLE,
+    "table_writes": table_writes.TITLE,
     "advisors": advisors.TITLE,
     "auth_config": auth_config.TITLE,
     "health_cron": health.TITLE,
@@ -174,6 +175,7 @@ def build_parser() -> argparse.ArgumentParser:
         f"environment variable, then {DEFAULT_LANGUAGE})",
     )
     check.add_argument("--json", action="store_true", help="print the JSON report instead of the summary")
+    check.add_argument("--sarif", action="store_true", help="also write report.sarif, for code scanning on pull requests")
     _add_target_options(check)
     _add_database_options(check)
     _add_probe_options(check)
@@ -440,6 +442,18 @@ def _snapshot_checks(
             results.append(failed)
         try:
             results.append(
+                table_writes.run(
+                    api_snapshot.asker(target, args.owner_approved, args.token_env), target,
+                    f"table privileges of anon and authenticated in project {target.project_ref}, "
+                    "read through the Management API read-only query endpoint",
+                )
+            )
+        except Refusal as refusal:
+            failed = CheckResult(id="table_writes", title=table_writes.TITLE, status=ERROR)
+            failed.reason = str(refusal)
+            results.append(failed)
+        try:
+            results.append(
                 health.run(
                     api_snapshot.asker(target, args.owner_approved, args.token_env),
                     f"pg_cron job list of project {target.project_ref}, read through the "
@@ -637,6 +651,7 @@ def _live_checks(
             results.append(live.run_extra_checks(connection, target.schemas, evidence))
             results.append(live.run_function_exposure(connection, target, evidence))
             results.append(storage_buckets.run_on_connection(connection, target, evidence))
+            results.append(table_writes.run_on_connection(connection, target, evidence))
             results.append(health.run_on_connection(connection, evidence, args.cron_days, target.expected_cron_jobs))
 
         if "probe" in skip:
@@ -714,6 +729,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         requested.add("secrets")
         checks.append(secret_scan.run(repos, args.exclude, args.max_bytes))
 
+    sql_files: list[Path] = []
     if "static" not in skip:
         sql_files = [Path(p) for p in args.sql_file]
         if args.migrations:
@@ -764,6 +780,8 @@ def cmd_check(args: argparse.Namespace) -> int:
 
     if not any(check.id == "storage_buckets" for check in checks):
         checks.append(_not_run("storage_buckets", "buckets are read through --via-api or a database connection"))
+    if not any(check.id == "table_writes" for check in checks):
+        checks.append(_not_run("table_writes", "table privileges are read through --via-api or a database connection"))
     if not any(check.id == "advisors" for check in checks):
         reason = advisors.NOT_ASKED if args.via_api else "the advisors are only read with --via-api --with-advisors"
         checks.append(_not_run("advisors", reason))
@@ -806,6 +824,12 @@ def cmd_check(args: argparse.Namespace) -> int:
             "Pass --out-dir with a writable folder, or --json to print the full report.",
             file=sys.stderr,
         )
+    if args.sarif and written:
+        try:
+            located = sarif.write(Path(args.out_dir) / "report.sarif", checks, repos, sql_files)
+            print(f"report.sarif: {located} findings placed on file lines", file=sys.stderr if args.json else sys.stdout)
+        except OSError as error:
+            print(f"could not write report.sarif ({type(error).__name__})", file=sys.stderr)
     if args.json:
         sys.stdout.write(report.to_json())
     else:

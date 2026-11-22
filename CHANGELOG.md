@@ -3,6 +3,15 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.17.0
+- New check `table_writes`, on `--via-api` and over a connection: which tables and views
+  `anon` and `authenticated` may insert, update or delete, judged against the target's new
+  `expected_table_writes`. A write on a table with RLS off is always reported; TRUNCATE
+  is noted. The statement ran on a real Supabase project (Postgres 17).
+- `--sarif` writes `report.sarif` (SARIF 2.1.0) with the findings that can be tied to a
+  file line, and counts the rest. The example CI workflow has an optional upload step.
+  Not yet uploaded to GitHub code scanning.
+
 ## 1.16.0
 - New `inventory` and `compare` commands. `inventory` saves what one database is made
   of (RLS state, table and column grants, default privileges, function and policy facts,

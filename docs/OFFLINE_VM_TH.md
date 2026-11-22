@@ -83,7 +83,7 @@ python -m webcare check --target <ชื่อเป้าหมาย> --via-ap
 unset WEBCARE_ACCESS_TOKEN
 ```
 
-เครื่องมือส่งคำสั่ง SELECT ไม่เกิน 5 ครั้งไปที่ช่องทางอ่านอย่างเดียวของโปรเจกต์ ถ้าได้ HTTP 403 แปลว่า token ไม่มีสิทธิ์ `database_read` ของโปรเจกต์นั้น เพิกถอน token เมื่อเสร็จ
+เครื่องมือส่งคำสั่ง SELECT ไม่เกิน 6 ครั้งไปที่ช่องทางอ่านอย่างเดียวของโปรเจกต์ ถ้าได้ HTTP 403 แปลว่า token ไม่มีสิทธิ์ `database_read` ของโปรเจกต์นั้น เพิกถอน token เมื่อเสร็จ
 
 **ทางที่ 2: ผู้ดูแลรันคำสั่งเองแล้วส่งไฟล์**
 
@@ -147,5 +147,7 @@ alter role webcare_auditor nologin;      -- ปิด login เมื่อต�
 | `sql/auditor-role.sql` บน Supabase จริง ซึ่งผู้ดูแลไม่ใช่ superuser | สร้าง role ได้โดยไม่มี error บน โครงการ staging ของผู้เขียน (Postgres 17.11, 22 พ.ย. 2569) ส่วนการ login ด้วย role นี้ยังไม่ได้ทดสอบ เพราะ VM ต่อ Postgres ไม่ได้ | รัน `preflight` จากเครื่องที่ต่อ Postgres ได้ |
 | ภาพถ่ายโครงสร้าง (`snapshot-sql`, `check --snapshot`) กับ Supabase จริง | คำสั่งรันได้บน โครงการ staging ของผู้เขียน (Postgres 17.11, 22 พ.ย. 2569) ได้ฟังก์ชันที่ผู้ไม่ล็อกอินเรียกได้ 19 ตัว ตรงกับ Security Advisor ข้อ 0028 ส่วนการบันทึกผลจาก SQL Editor เป็นไฟล์แล้วป้อนให้เครื่องมือยังไม่ได้ทดสอบ | ทำตามหัวข้อ "เมื่อ VM ต่อ Postgres ไม่ได้" |
 | การเทียบสองฐาน (`inventory`, `compare`) | คำสั่งอ่าน catalog หกคำสั่งและคำสั่งอ่านประวัติ migration รันบนโปรเจกต์ staging ของผู้เขียน (Postgres 17.11) ผ่าน Supabase connector ด้วย role `postgres` ได้ 107 ตาราง สิทธิ์คอลัมน์ 61 รายการ ค่าตั้งต้น 28 รายการ ฟังก์ชัน 374 policy 72 extension 7 และ migration 195 รวมราว 130 KB ทั้งคำสั่งรันกับฐานทดสอบเท่านั้น ยังไม่ได้ทดสอบว่า `supabase_read_only_user` อ่านประวัติ migration ผ่าน `--via-api` ได้หรือไม่ | รัน `inventory --via-api` กับสองโปรเจกต์ แล้ว `compare` สองไฟล์ |
+| ตารางที่ role ของ API เขียนได้ (`table_writes`) | คำสั่งรันบนโปรเจกต์ staging ของผู้เขียน (Postgres 17.11) ผ่าน Supabase connector ด้วย role `postgres` ได้ `anon` เขียนได้ 9 ตาราง `authenticated` 22 ตาราง ทุกตารางเปิด RLS ตรงกับการอ่านสิทธิ์แยกอีกครั้ง ยังไม่ได้รันผ่าน `--via-api` ด้วย `supabase_read_only_user` | รัน `check --via-api` แล้วเทียบกับสิทธิ์ตารางในหน้า dashboard |
+| ผลแบบ SARIF (`--sarif`) | ตรวจโครงสร้างตาม SARIF 2.1.0 ด้วยชุดทดสอบเท่านั้น ยังไม่เคยอัปโหลดเข้า GitHub code scanning | ทำตามหัวข้อ SARIF ใน `docs/CI_TH.md` กับ repository สาธารณะ |
 | Postgres เวอร์ชันอื่นนอกจาก 16 | ชุดทดสอบของเวอร์ชัน 1.1 ผ่านบน Postgres 17.12 บน VM (22 พ.ย. 2569) ส่วนการตรวจที่เพิ่มใน 1.2 ทดสอบบน 16 เท่านั้น | รัน `python -m pytest tests` ซ้ำบน VM |
 | การตรวจฟังก์ชันที่เพิ่มในเวอร์ชัน 1.2 กับ Supabase จริง | ยังไม่ทดสอบ ทดสอบกับ Postgres 16 ในเครื่อง และลองอ่านไฟล์ migration ของ ผู้เขียน 14 ไฟล์ (พบไฟล์และฟังก์ชันที่เป็นต้นเหตุของปัญหาที่กำลังแก้อยู่ในตอนนั้น) | รันขั้นที่ 5 กับ staging แล้วเทียบจำนวนฟังก์ชันที่ผู้ไม่ล็อกอินเรียกได้กับผลของ Security Advisor ข้อ 0028 |

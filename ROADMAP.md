@@ -21,22 +21,21 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.13–1.14.1 | Supabase's own security lints (`--with-advisors`); default privileges of new tables | 1.14.0 ran against a real project and showed the parser counted wrongly; fixed in 1.14.1, not yet re-run |
 | 1.15 | Optional checks and report language switched on from the target file | Test suite only; the switch reuses checks that are verified |
 | 1.16 | Comparing two environments (`inventory`, `compare`) | Statements ran on a real project; the whole command against the test database only |
+| 1.17 | Declared table grants (`table_writes`, `expected_table_writes`); SARIF output (`--sarif`) | The table statement ran on a real project; SARIF has not been uploaded to GitHub yet |
 
 ## In progress
 
-1. **Declared table grants.** Let a target state which tables each API role may
-   write to, so that write privileges left over from defaults are reported.
+Nothing at the moment.
 
 ## Planned, not started
 
-2. **SARIF output**, so CI can show findings on the lines of a pull request.
-3. **Platform settings** such as SSL enforcement and network restrictions. The
+1. **Platform settings** such as SSL enforcement and network restrictions. The
    Management API endpoints for these have not been checked yet.
-4. **Thai text for each finding's detail.** Headings are translated already.
+2. **Thai text for each finding's detail.** Headings are translated already.
 
 ## Waiting on a decision
 
-5. **Probing as a signed-in test user.** Policies that exist but restrict too
+3. **Probing as a signed-in test user.** Policies that exist but restrict too
    little are a common cause of leaks, and only a signed-in request shows them.
    Signing in writes session rows, and may write an application's own audit
    rows, so this needs a design that the owner of each project accepts. Staging
