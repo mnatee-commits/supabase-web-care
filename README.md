@@ -60,6 +60,8 @@ against a real system is listed at the end of [docs/OFFLINE_VM.md](docs/OFFLINE_
 
 `report.md` is written in English by default; pass `--lang th` (or set `WEBCARE_LANG=th`) for Thai.
 
+What is done, in progress and planned is in [ROADMAP.md](ROADMAP.md).
+
 ## Use it together with
 
 This toolkit is a thin layer. It is meant to sit beside these, not replace them.
