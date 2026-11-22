@@ -1,0 +1,43 @@
+# Targets for live checks. Copy this file to webcare.toml and edit it.
+#
+# A live check only runs against a target declared here, and only when the
+# connection details supplied at run time match the declaration. Nothing in
+# this file is a secret: passwords and keys come from environment variables
+# (WEBCARE_DATABASE_URL, WEBCARE_ANON_KEY).
+#
+#   env   local | staging | production
+#   data  synthetic | real
+#
+# A target with env = "production" or data = "real" needs --owner-approved on
+# every run. Mark a local copy of real data as data = "real": where the data
+# sits does not change whose data it is.
+
+[[target]]
+name = "sim"
+env = "local"
+data = "synthetic"
+db = "127.0.0.1:5432/app_sim"          # host:port/database
+# rest = "http://127.0.0.1:54321"      # API base URL, for the anon probe
+# schemas = ["public"]                 # schemas the live checks cover
+# expected_public = ["public_content"] # tables anon is meant to read
+# SECURITY DEFINER functions a visitor may call without signing in. Once this
+# list exists, any other such function is reported at high severity, and an
+# entry that anon can no longer execute is reported too.
+# expected_anon_functions = ["public.support_contact()", "public.find_invite(text)"]
+# expected_public_buckets = ["site-images"]   # buckets that are meant to be public
+# expected_open_signup = true                 # anyone may create an account, on purpose
+# expected_cron_jobs = ["nightly_cleanup"]     # pg_cron jobs that must exist and be active
+
+# [[target]]
+# name = "real"
+# env = "local"
+# data = "real"
+# db = "127.0.0.1:5432/app"
+
+# [[target]]
+# name = "staging"
+# env = "staging"
+# data = "synthetic"
+# db = "db.<project-ref>.supabase.co:5432/postgres"
+# rest = "https://<project-ref>.supabase.co"
+# project_ref = "<project-ref>"        # for `check --via-api`, when Postgres is unreachable

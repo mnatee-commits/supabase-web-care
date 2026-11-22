@@ -1,0 +1,12 @@
+# Local configuration, reports and build output of supabase-web-care
+webcare.toml
+webcare-output/
+wheelhouse/
+.venv/
+__pycache__/
+.pytest_cache/
+
+# Database dumps never belong here. The SQL files that are tracked are
+# hand-written role, check and fixture definitions with synthetic rows only.
+*.dump
+*.sql.gz

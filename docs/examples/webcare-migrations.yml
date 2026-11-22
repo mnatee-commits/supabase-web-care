@@ -1,0 +1,48 @@
+# Example for the repository that holds your site's migrations.
+# Copy to .github/workflows/webcare-migrations.yml and edit the three marked values.
+# It reads files only: no database, no Supabase key.
+name: webcare migrations
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/**"          # EDIT 1: where your migrations live
+      - "webcare-baseline.json"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fetch the toolkit at a reviewed commit
+        uses: actions/checkout@v4
+        with:
+          repository: OWNER/supabase-web-care  # EDIT 2: where the toolkit lives
+          ref: 0000000000000000000000000000000000000000  # EDIT 3: a full commit hash you reviewed, never a branch
+          path: .webcare
+          persist-credentials: false
+          # While the toolkit repository is private, give this job a read-only deploy key:
+          # ssh-key: ${{ secrets.WEBCARE_DEPLOY_KEY }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install the toolkit's pinned dependencies
+        run: pip install --require-hashes -r .webcare/requirements.lock
+      - name: Check the migrations
+        run: |
+          PYTHONPATH=.webcare python -m webcare check --skip secrets \
+            --migrations supabase/migrations \
+            --baseline webcare-baseline.json \
+            --fail-on high --out-dir webcare-output
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: webcare-report
+          path: webcare-output/report.md

@@ -1,0 +1,676 @@
+"""Command line entry point: python -m webcare <command>.
+
+    check         run every check that the given inputs allow and write a report
+    secrets       scan a source tree for credentials
+    probe         ask the Data API what an anonymous visitor can read (HEAD only)
+    preflight     show what the connecting database role is able to do
+    snapshot-sql  print the read-only statement that takes a catalog snapshot
+
+Offline checks need no configuration. Live checks need a target declared in
+webcare.toml; credentials come from environment variables, never from flags.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import Optional, Sequence
+
+from . import (
+    __version__, anon_probe, api_snapshot, auth_config, backups, baseline, functions_static, health, live, logs, pgrls_runner, secret_scan,
+    snapshot, storage_buckets,
+)
+from .model import ERROR, NOT_RUN, CheckResult, Refusal, severity_at_least
+from .report import DEFAULT_LANGUAGE, LANGUAGE_ENV, LANGUAGES, Report
+from .targets import APPROVAL_FLAG, DEFAULT_CONFIG_NAME, Target, get_target
+
+DEFAULT_DB_ENV = "WEBCARE_DATABASE_URL"
+DEFAULT_OUT_DIR = "webcare-output"
+EXIT_REFUSED = 2
+
+TITLES = {
+    "rls_static": "RLS policies from SQL files (pgrls, offline)",
+    "functions_static": functions_static.TITLE,
+    "rls_live": "RLS policies from the live catalog (pgrls)",
+    "storage_live": "Storage policies from the live catalog (pgrls)",
+    "extra_live": "Catalog checks beyond pgrls",
+    "functions_live": "SECURITY DEFINER functions callable without signing in",
+    "storage_buckets": storage_buckets.TITLE,
+    "auth_config": auth_config.TITLE,
+    "health_cron": health.TITLE,
+    "health_backups": backups.TITLE,
+    "health_logs": logs.TITLE,
+    "anon_probe": "What an anonymous visitor can read",
+}
+
+
+def _not_run(check_id: str, reason: str) -> CheckResult:
+    return CheckResult(id=check_id, title=TITLES[check_id], status=NOT_RUN, reason=reason)
+
+
+def _git_revision(path: Path) -> str:
+    """Short revision of the tree at `path`, marked when it has local changes."""
+    try:
+        revision = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--short=12", "HEAD"],
+            capture_output=True, text=True, timeout=30, check=True,
+        ).stdout.strip()
+        dirty = subprocess.run(
+            ["git", "-C", str(path), "status", "--porcelain"],
+            capture_output=True, text=True, timeout=30, check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return "revision unknown"
+    return f"revision {revision}" + (" with uncommitted changes" if dirty else "")
+
+
+def _add_target_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--config", default=DEFAULT_CONFIG_NAME, help="target file (default: ./webcare.toml)")
+    parser.add_argument(
+        APPROVAL_FLAG, dest="owner_approved", action="store_true",
+        help="the owner has approved, in their own words, live checks against a target "
+        "that is production or holds real data",
+    )
+
+
+def _add_database_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--db-env", default=DEFAULT_DB_ENV,
+        help=f"environment variable holding the connection string (default: {DEFAULT_DB_ENV})",
+    )
+    parser.add_argument(
+        live.OVERRIDE_FLAG, dest="allow_privileged_role", action="store_true",
+        help="accept a superuser, BYPASSRLS or writing role; only for a throwaway "
+        "local database with synthetic data",
+    )
+
+
+def _add_probe_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--rest-url", help="API base URL (default: the target's `rest`)")
+    parser.add_argument(
+        "--key-env", default=anon_probe.DEFAULT_KEY_ENV,
+        help=f"environment variable holding the public key (default: {anon_probe.DEFAULT_KEY_ENV})",
+    )
+    parser.add_argument("--table", action="append", default=[], help="table or view to probe; repeatable")
+    parser.add_argument("--probe-schema", default="public", help="exposed schema to probe (default: public)")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="webcare", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--version", action="version", version=f"supabase-web-care {__version__}")
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    check = commands.add_parser("check", help="run every check the inputs allow and write a report")
+    check.add_argument("--repo", action="append", default=[], help="source tree for the credential scan; repeatable (default: .)")
+    check.add_argument("--exclude", action="append", default=[], help="glob of paths the credential scan skips; repeatable")
+    check.add_argument("--max-bytes", type=int, default=secret_scan.DEFAULT_MAX_BYTES, help="largest file the credential scan reads")
+    check.add_argument("--migrations", help="directory of .sql migrations, linted in file-name order")
+    check.add_argument("--sql-file", action="append", default=[], help="SQL file to lint, in the order given; repeatable")
+    check.add_argument("--exclude-sql", action="append", default=[], help="glob of migration file names to leave out; repeatable")
+    check.add_argument("--target", help="declared target for live checks")
+    check.add_argument(
+        "--snapshot",
+        help="catalog snapshot file to judge instead of connecting to the database "
+        "(see `snapshot-sql`); needs no database credentials",
+    )
+    check.add_argument(
+        "--via-api", action="store_true",
+        help="fetch the catalog snapshot through the Supabase Management API read-only "
+        "endpoint of the target's project_ref, for machines that cannot reach Postgres",
+    )
+    check.add_argument(
+        "--token-env", default=api_snapshot.DEFAULT_TOKEN_ENV,
+        help="environment variable holding the account access token for --via-api "
+        f"(default: {api_snapshot.DEFAULT_TOKEN_ENV})",
+    )
+    check.add_argument(
+        "--baseline",
+        help="file of findings from SQL files that are already known; they are counted in "
+        "the report but do not fail the run (see --write-baseline)",
+    )
+    check.add_argument(
+        "--write-baseline",
+        help="record the current findings from SQL files into this file, to start from",
+    )
+    check.add_argument(
+        "--with-auth-config", action="store_true",
+        help="with --via-api, also read the project's sign-in settings (one GET; the token "
+        "then also needs auth_config_read; the answer includes secrets, which are discarded)",
+    )
+    check.add_argument(
+        "--with-backups", action="store_true",
+        help="with --via-api, also read the project's backup list (one GET; the token "
+        "then also needs the backups_read permission)",
+    )
+    check.add_argument(
+        "--with-logs", action="store_true",
+        help="with --via-api, also count the last 24 hours of API gateway requests by "
+        "status (one GET, counts only; the token then also needs analytics_logs_read)",
+    )
+    check.add_argument(
+        "--cron-days", type=int, default=health.DEFAULT_WINDOW_DAYS, choices=range(1, health.MAX_WINDOW_DAYS + 1),
+        metavar="DAYS", help=f"how far back to look at scheduled-job runs (default: {health.DEFAULT_WINDOW_DAYS})",
+    )
+    check.add_argument("--skip", action="append", default=[], choices=["secrets", "static", "live", "probe"], help="leave a group of checks out; repeatable")
+    check.add_argument("--pgrls-config", help="pgrls.toml with rule allowlists or severities")
+    check.add_argument("--allow-pgrls-version-mismatch", action="store_true", help="run a pgrls release other than the reviewed one")
+    check.add_argument("--out-dir", default=DEFAULT_OUT_DIR, help=f"where report.md and report.json go (default: {DEFAULT_OUT_DIR})")
+    check.add_argument("--fail-on", default="high", choices=["high", "medium", "low", "never"], help="lowest severity that makes the exit code 1 (default: high)")
+    check.add_argument(
+        "--lang", choices=LANGUAGES,
+        default=os.environ.get(LANGUAGE_ENV) if os.environ.get(LANGUAGE_ENV) in LANGUAGES else DEFAULT_LANGUAGE,
+        help=f"language of report.md (default: {DEFAULT_LANGUAGE}, or the {LANGUAGE_ENV} environment variable)",
+    )
+    check.add_argument("--json", action="store_true", help="print the JSON report instead of the summary")
+    _add_target_options(check)
+    _add_database_options(check)
+    _add_probe_options(check)
+    check.set_defaults(handler=cmd_check)
+
+    secrets = commands.add_parser("secrets", help="scan a source tree for credentials")
+    secrets.add_argument("paths", nargs="*", default=["."], help="files or directories (default: .)")
+    secrets.add_argument("--exclude", action="append", default=[], help="glob of paths to skip; repeatable")
+    secrets.add_argument("--max-bytes", type=int, default=secret_scan.DEFAULT_MAX_BYTES)
+    secrets.add_argument("--fail-on", default="high", choices=["high", "medium", "low", "never"])
+    secrets.add_argument("--show-info", action="store_true", help="also list public keys found (inventory)")
+    secrets.set_defaults(handler=cmd_secrets)
+
+    probe = commands.add_parser("probe", help="HEAD-only check of what an anonymous visitor can read")
+    probe.add_argument("--target", required=True, help="declared target")
+    _add_target_options(probe)
+    _add_probe_options(probe)
+    probe.set_defaults(handler=cmd_probe)
+
+    preflight = commands.add_parser("preflight", help="show what the connecting database role can do")
+    preflight.add_argument("--target", required=True, help="declared target")
+    _add_target_options(preflight)
+    _add_database_options(preflight)
+    preflight.set_defaults(handler=cmd_preflight)
+
+    snapshot_sql = commands.add_parser(
+        "snapshot-sql",
+        help="print the read-only statement that takes a catalog snapshot",
+        description="Print one read-only SELECT. An administrator runs it where they already "
+        "have access (the SQL editor, for example) and saves the JSON result to a file for "
+        "`check --snapshot`. Nothing is contacted by this command.",
+    )
+    snapshot_sql.add_argument("--target", help="take the label and schemas from this declared target")
+    snapshot_sql.add_argument("--config", default=DEFAULT_CONFIG_NAME, help="target file (default: ./webcare.toml)")
+    snapshot_sql.add_argument("--label", help="label written into the snapshot; must equal the target name used later")
+    snapshot_sql.add_argument("--schema", action="append", default=[], help="schema to cover; repeatable (default: public)")
+    snapshot_sql.set_defaults(handler=cmd_snapshot_sql)
+    return parser
+
+
+def _print_findings(result: CheckResult, show_info: bool = False) -> None:
+    for finding in result.findings:
+        if finding.severity == "info" and not show_info:
+            continue
+        print(f"{finding.severity:<6} {finding.rule:<32} {finding.location}  {finding.message}")
+    for note in result.notes:
+        print(f"note: {note}")
+    if result.reason:
+        print(f"{result.status}: {result.reason}")
+
+
+def _exit_code(result: CheckResult, fail_on: str) -> int:
+    if result.status in ("ERROR", NOT_RUN):
+        return EXIT_REFUSED
+    if fail_on != "never" and any(severity_at_least(f.severity, fail_on) for f in result.findings):
+        return 1
+    return 0
+
+
+def cmd_secrets(args: argparse.Namespace) -> int:
+    result = secret_scan.run([Path(p) for p in args.paths], args.exclude, args.max_bytes)
+    _print_findings(result, args.show_info)
+    print(f"{result.status}: {result.evidence}")
+    return _exit_code(result, args.fail_on)
+
+
+def cmd_probe(args: argparse.Namespace) -> int:
+    try:
+        target = get_target(Path(args.config), args.target)
+    except Refusal as refusal:
+        print(f"refused: {refusal}", file=sys.stderr)
+        return EXIT_REFUSED
+    result = anon_probe.run(
+        target,
+        args.rest_url or target.rest or "",
+        args.table,
+        owner_approved=args.owner_approved,
+        key_env=args.key_env,
+        schema=args.probe_schema,
+    )
+    _print_findings(result)
+    print(f"{result.status}: {result.evidence}")
+    return _exit_code(result, "high")
+
+
+def cmd_preflight(args: argparse.Namespace) -> int:
+    try:
+        target = get_target(Path(args.config), args.target)
+        dsn = os.environ.get(args.db_env, "")
+        if not dsn:
+            raise Refusal(f"environment variable {args.db_env} is not set")
+        connection, endpoint, facts = live.open_checked(
+            target, dsn, args.owner_approved, args.allow_privileged_role
+        )
+    except Refusal as refusal:
+        print(f"refused: {refusal}", file=sys.stderr)
+        return EXIT_REFUSED
+    connection.close()
+    print(f"target:     {target.describe()}")
+    print(f"connection: {endpoint.describe()}")
+    print(f"role:       {facts.summary()}")
+    if facts.member_of:
+        print(f"member of:  {', '.join(facts.member_of)}")
+    problems = facts.problems()
+    if problems:
+        print(f"warning:    this role {' and '.join(problems)} (accepted by {live.OVERRIDE_FLAG})")
+    else:
+        print("ok:         this role cannot write to application tables")
+    return 0
+
+
+def cmd_snapshot_sql(args: argparse.Namespace) -> int:
+    try:
+        if args.target:
+            target = get_target(Path(args.config), args.target)
+            label, schemas = target.name, list(target.schemas)
+        elif args.label:
+            label, schemas = args.label, args.schema or ["public"]
+        else:
+            raise Refusal("give --target, or --label (and --schema when not public)")
+        sys.stdout.write(snapshot.build_sql(schemas, label))
+    except Refusal as refusal:
+        print(f"refused: {refusal}", file=sys.stderr)
+        return EXIT_REFUSED
+    return 0
+
+
+def _snapshot_checks(
+    args: argparse.Namespace, skip: set[str], requested: set[str]
+) -> tuple[list[CheckResult], str]:
+    """Catalog checks judged from a snapshot file. No database is contacted."""
+    requested.update({"extra_live", "functions_live"})
+    no_pgrls = _not_run(
+        "rls_live", "a snapshot was used instead of a connection; pgrls needs a database to lint"
+    )
+    via_api = bool(args.via_api)
+    thai = args.lang == "th"
+    label = "Management API" if via_api else (
+        f"ไฟล์ snapshot {Path(args.snapshot).name}" if thai else f"snapshot file {Path(args.snapshot).name}"
+    )
+    try:
+        if via_api and args.snapshot:
+            raise Refusal("give either --snapshot or --via-api, not both")
+        target: Optional[Target] = get_target(Path(args.config), args.target) if args.target else None
+        if via_api:
+            if target is None:
+                raise Refusal("--via-api needs --target, which names the project to ask")
+            data, source = api_snapshot.fetch(target, args.owner_approved, args.token_env)
+        else:
+            source = Path(args.snapshot)
+            data = snapshot.load(source)
+        if target is not None:
+            snapshot.ensure_matches(data, target)
+    except Refusal as refusal:
+        refused = [
+            _not_run(check_id, str(refusal))
+            for check_id in ("extra_live", "functions_live", "health_cron", "anon_probe")
+        ]
+        return [no_pgrls] + refused, f"{label} (ถูกปฏิเสธ)" if thai else f"{label} (refused)"
+
+    results = [no_pgrls] + snapshot.run_checks(data, source, target)
+    if via_api:
+        try:
+            results.append(
+                storage_buckets.run(
+                    api_snapshot.asker(target, args.owner_approved, args.token_env), target,
+                    f"storage.buckets and the policies of storage.objects in project "
+                    f"{target.project_ref}, read through the Management API read-only query endpoint",
+                )
+            )
+        except Refusal as refusal:
+            failed = CheckResult(id="storage_buckets", title=storage_buckets.TITLE, status=ERROR)
+            failed.reason = str(refusal)
+            results.append(failed)
+        try:
+            results.append(
+                health.run(
+                    api_snapshot.asker(target, args.owner_approved, args.token_env),
+                    f"pg_cron job list of project {target.project_ref}, read through the "
+                    "Management API read-only query endpoint",
+                    args.cron_days, target.expected_cron_jobs,
+                )
+            )
+        except Refusal as refusal:
+            failed = CheckResult(id="health_cron", title=health.TITLE, status=ERROR)
+            failed.reason = str(refusal)
+            results.append(failed)
+        if args.with_auth_config:
+            try:
+                results.append(
+                    auth_config.run(
+                        target,
+                        # already reduced to the allowlist inside api_snapshot
+                        lambda: api_snapshot.auth_settings(target, args.owner_approved, args.token_env),
+                        f"Auth configuration of project {target.project_ref}, read through the "
+                        "Management API and reduced to an allowlist of settings",
+                    )
+                )
+            except Refusal as refusal:
+                failed = CheckResult(id="auth_config", title=auth_config.TITLE, status=ERROR)
+                failed.reason = str(refusal)
+                results.append(failed)
+        if args.with_backups:
+            try:
+                results.append(
+                    backups.run(
+                        target,
+                        lambda: api_snapshot.backup_list(target, args.owner_approved, args.token_env),
+                        f"backup list of project {target.project_ref}, read through the Management API",
+                    )
+                )
+            except Refusal as refusal:
+                failed = CheckResult(id="health_backups", title=backups.TITLE, status=ERROR)
+                failed.reason = str(refusal)
+                results.append(failed)
+        if args.with_logs:
+            try:
+                results.append(
+                    logs.run(
+                        target,
+                        lambda sql, start, end: api_snapshot.log_summary(
+                            target, args.owner_approved, sql, start, end, args.token_env
+                        ),
+                        f"API gateway log of project {target.project_ref}, counted through the "
+                        "Management API log query endpoint",
+                    )
+                )
+            except Refusal as refusal:
+                failed = CheckResult(id="health_logs", title=logs.TITLE, status=ERROR)
+                failed.reason = str(refusal)
+                results.append(failed)
+    else:
+        results.append(
+            _not_run(
+                "health_cron",
+                "a snapshot file carries no scheduled-job history; use --via-api or a connection",
+            )
+        )
+    if "probe" in skip:
+        results.append(_not_run("anon_probe", "left out with --skip probe"))
+    elif target is None or target.rest is None:
+        results.append(_not_run("anon_probe", "no target with an API URL was given"))
+    else:
+        tables = list(args.table) or snapshot.anon_readable(data, args.probe_schema)
+        if not tables:
+            results.append(
+                _not_run(
+                    "anon_probe",
+                    f"the snapshot shows no relation in schema {args.probe_schema} "
+                    "that anon may SELECT, so there is nothing to probe",
+                )
+            )
+        else:
+            requested.add("anon_probe")
+            probe = anon_probe.run(
+                target,
+                args.rest_url or target.rest,
+                tables[: anon_probe.MAX_TABLES],
+                owner_approved=args.owner_approved,
+                key_env=args.key_env,
+                schema=args.probe_schema,
+            )
+            if len(tables) > anon_probe.MAX_TABLES:
+                probe.notes.append(
+                    f"{len(tables)} relations are readable by anon; only the first "
+                    f"{anon_probe.MAX_TABLES} were probed"
+                )
+            results.append(probe)
+    if via_api:
+        if thai:
+            return results, (
+                f"{target.describe()} ผ่าน Management API แบบอ่านอย่างเดียวของโปรเจกต์ "
+                f"{target.project_ref} ไม่ได้เชื่อมต่อ Postgres โดยตรง"
+            )
+        return results, (
+            f"{target.describe()} through the read-only Management API of project "
+            f"{target.project_ref}; Postgres was not contacted directly"
+        )
+    if target is not None:
+        if thai:
+            return results, f"{target.describe()} จาก{label} ไม่ได้เชื่อมต่อฐานข้อมูล"
+        return results, f"{target.describe()} from {label}; no database was contacted"
+    if thai:
+        return results, f"{label} ป้าย {data['label']} ไม่ได้ระบุเป้าหมายและไม่ได้เชื่อมต่อฐานข้อมูล"
+    return results, f"{label} labelled {data['label']}; no target was named and no database was contacted"
+
+
+def _live_checks(
+    args: argparse.Namespace, target: Target, skip: set[str], requested: set[str]
+) -> list[CheckResult]:
+    """Database and API checks against one declared target."""
+    results: list[CheckResult] = []
+    connection = None
+    database_reason = ""
+    dsn = os.environ.get(args.db_env, "")
+
+    if "live" in skip:
+        database_reason = "left out with --skip live"
+    elif target.db is None:
+        database_reason = f"target {target.name!r} declares no database"
+    else:
+        requested.update({"rls_live", "extra_live", "functions_live"})
+        if not dsn:
+            database_reason = f"environment variable {args.db_env} is not set"
+        else:
+            try:
+                connection, endpoint, facts = live.open_checked(
+                    target, dsn, args.owner_approved, args.allow_privileged_role
+                )
+            except Refusal as refusal:
+                database_reason = str(refusal)
+
+    try:
+        if connection is None:
+            results.append(_not_run("rls_live", database_reason))
+            results.append(_not_run("extra_live", database_reason))
+            results.append(_not_run("functions_live", database_reason))
+            results.append(_not_run("health_cron", database_reason))
+        else:
+            evidence = (
+                f"system catalog of {endpoint.describe()}, target {target.describe()}; "
+                f"{facts.summary()}"
+            )
+            config = Path(args.pgrls_config) if args.pgrls_config else None
+            rls_live = CheckResult(id="rls_live", title=TITLES["rls_live"], evidence=evidence)
+            pgrls_runner.run_lint(
+                rls_live,
+                schemas=target.schemas,
+                database_url=dsn,
+                config=config,
+                allow_version_mismatch=args.allow_pgrls_version_mismatch,
+                force_read_only=facts.privileged,
+            )
+            if facts.problems():
+                rls_live.notes.append(
+                    f"connected with a privileged role ({' and '.join(facts.problems())}); "
+                    f"accepted by {live.OVERRIDE_FLAG}"
+                )
+            if facts.relations_readable:
+                rls_live.notes.append(
+                    f"the connecting role can read {facts.relations_readable} of "
+                    f"{facts.relations_total} relations in the checked schemas; none were read"
+                )
+            results.append(rls_live)
+
+            if live.schema_exists(connection, "storage") and "storage" not in target.schemas:
+                storage = CheckResult(id="storage_live", title=TITLES["storage_live"], evidence=evidence)
+                pgrls_runner.run_lint(
+                    storage,
+                    schemas=["storage"],
+                    database_url=dsn,
+                    rules=pgrls_runner.STORAGE_RULES,
+                    allow_version_mismatch=args.allow_pgrls_version_mismatch,
+                    force_read_only=facts.privileged,
+                )
+                results.append(storage)
+
+            results.append(live.run_extra_checks(connection, target.schemas, evidence))
+            results.append(live.run_function_exposure(connection, target, evidence))
+            results.append(storage_buckets.run_on_connection(connection, target, evidence))
+            results.append(health.run_on_connection(connection, evidence, args.cron_days, target.expected_cron_jobs))
+
+        if "probe" in skip:
+            results.append(_not_run("anon_probe", "left out with --skip probe"))
+        elif target.rest is None:
+            results.append(_not_run("anon_probe", f"target {target.name!r} declares no API URL"))
+        else:
+            requested.add("anon_probe")
+            tables = list(args.table)
+            if not tables and connection is not None:
+                tables = live.anon_readable_relations(connection, args.probe_schema)
+                if not tables:
+                    results.append(
+                        _not_run(
+                            "anon_probe",
+                            f"the catalog shows no relation in schema {args.probe_schema} "
+                            "that anon may SELECT, so there is nothing to probe",
+                        )
+                    )
+                    requested.discard("anon_probe")
+                    return results
+            probe = anon_probe.run(
+                target,
+                args.rest_url or target.rest,
+                tables[: anon_probe.MAX_TABLES],
+                owner_approved=args.owner_approved,
+                key_env=args.key_env,
+                schema=args.probe_schema,
+            )
+            if len(tables) > anon_probe.MAX_TABLES:
+                probe.notes.append(
+                    f"{len(tables)} relations are readable by anon; only the first "
+                    f"{anon_probe.MAX_TABLES} were probed"
+                )
+            results.append(probe)
+    finally:
+        if connection is not None:
+            connection.close()
+    return results
+
+
+def cmd_check(args: argparse.Namespace) -> int:
+    skip = set(args.skip)
+    requested: set[str] = set()
+    checks: list[CheckResult] = []
+    repos = [Path(p) for p in (args.repo or ["."])]
+
+    if "secrets" not in skip:
+        requested.add("secrets")
+        checks.append(secret_scan.run(repos, args.exclude, args.max_bytes))
+
+    if "static" not in skip:
+        sql_files = [Path(p) for p in args.sql_file]
+        if args.migrations:
+            excludes = tuple(args.exclude_sql) or pgrls_runner.DEFAULT_SQL_EXCLUDES
+            sql_files += pgrls_runner.collect_sql_files(Path(args.migrations), excludes)
+        static = CheckResult(id="rls_static", title=TITLES["rls_static"])
+        functions = CheckResult(id="functions_static", title=TITLES["functions_static"])
+        missing = [str(path) for path in sql_files if not path.is_file()]
+        if missing:
+            static.status = functions.status = "ERROR"
+            static.reason = functions.reason = "SQL file not found: " + ", ".join(missing)
+        elif not sql_files:
+            static.reason = functions.reason = "no SQL files given (--migrations or --sql-file)"
+        else:
+            requested.add("rls_static")
+            static.evidence = (
+                f"{len(sql_files)} SQL files read from disk, in this order: "
+                + ", ".join(path.name for path in sql_files)
+            )
+            pgrls_runner.run_lint(
+                static,
+                sql_files=sql_files,
+                config=Path(args.pgrls_config) if args.pgrls_config else None,
+                allow_version_mismatch=args.allow_pgrls_version_mismatch,
+            )
+            requested.add("functions_static")
+            functions_static.run(sql_files, functions)
+        checks.append(static)
+        checks.append(functions)
+
+    target_text = "ไม่มี (ตรวจจากไฟล์เท่านั้น)" if args.lang == "th" else "none (files only)"
+    if args.snapshot or args.via_api:
+        snapshot_results, target_text = _snapshot_checks(args, skip, requested)
+        checks += snapshot_results
+    elif args.target is None:
+        reason = "no --target given, so nothing live was contacted"
+        checks += [_not_run(check_id, reason) for check_id in ("rls_live", "extra_live", "functions_live", "health_cron", "anon_probe")]
+    else:
+        try:
+            target: Optional[Target] = get_target(Path(args.config), args.target)
+        except Refusal as refusal:
+            target = None
+            requested.update({"rls_live", "extra_live", "functions_live"})
+            checks += [_not_run(check_id, str(refusal)) for check_id in ("rls_live", "extra_live", "functions_live", "health_cron", "anon_probe")]
+        if target is not None:
+            target_text = target.describe()
+            checks += _live_checks(args, target, skip, requested)
+
+    if not any(check.id == "storage_buckets" for check in checks):
+        checks.append(_not_run("storage_buckets", "buckets are read through --via-api or a database connection"))
+    if not any(check.id == "auth_config" for check in checks):
+        reason = auth_config.NOT_ASKED if args.via_api else "sign-in settings are only read with --via-api --with-auth-config"
+        checks.append(_not_run("auth_config", reason))
+    if not any(check.id == "health_backups" for check in checks):
+        reason = backups.NOT_ASKED if args.via_api else "the backup list is only read with --via-api --with-backups"
+        checks.append(_not_run("health_backups", reason))
+    if not any(check.id == "health_logs" for check in checks):
+        reason = logs.NOT_ASKED if args.via_api else "the log summary is only read with --via-api --with-logs"
+        checks.append(_not_run("health_logs", reason))
+
+    if args.write_baseline:
+        try:
+            count = baseline.write(Path(args.write_baseline), checks)
+        except OSError as error:
+            print(f"could not write the baseline ({type(error).__name__})", file=sys.stderr)
+            return EXIT_REFUSED
+        print(f"baseline: {count} findings recorded in {args.write_baseline}", file=sys.stderr)
+    if args.baseline:
+        try:
+            baseline.apply(checks, baseline.load(Path(args.baseline)), Path(args.baseline).name)
+        except Refusal as refusal:
+            print(f"refused: {refusal}", file=sys.stderr)
+            return EXIT_REFUSED
+
+    source = "; ".join(f"{repo.resolve()} ({_git_revision(repo)})" for repo in repos)
+    report = Report(checks=checks, source=source, target=target_text, requested=requested, lang=args.lang)
+    try:
+        written = report.write(Path(args.out_dir))
+    except OSError as error:
+        written = None
+        print(
+            f"could not write the report to {args.out_dir} ({type(error).__name__}). "
+            "Pass --out-dir with a writable folder, or --json to print the full report.",
+            file=sys.stderr,
+        )
+    if args.json:
+        sys.stdout.write(report.to_json())
+    else:
+        print(report.console_summary())
+        if written:
+            print(f"report: {written[1]}")
+            print(f"        {written[0]}")
+    return report.exit_code(args.fail_on)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = build_parser().parse_args(argv)
+    return args.handler(args)

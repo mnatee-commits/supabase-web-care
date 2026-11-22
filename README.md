@@ -1,0 +1,98 @@
+# supabase-web-care
+
+Read-only security and health checks for websites built on Supabase or
+PostgreSQL, with a skill that tells an AI agent how to use them safely.
+
+Full manual: [MANUAL.md](MANUAL.md) (English) · [README_TH.md](README_TH.md) (ไทย).
+
+## Read this first
+
+- **Tested against two real projects, both the author's.** Everything else was
+  tested against local stand-ins. Expect rough edges on a project that is
+  shaped differently, and try it on a staging project first.
+- **Through the Management API route, RLS policies are not checked.** Most
+  Supabase sites let the browser read and write tables directly and rely on
+  RLS; for them the policy check is the one that matters most. It runs from
+  SQL files or from a direct database connection (through pgrls), not through
+  `--via-api`. On that route the report shows `rls_live` as `NOT_RUN`. Do not
+  read the rest of that report as covering your tables.
+- **It certifies nothing.** The checks follow Supabase's own guidance. They
+  are not a mapping to OWASP, to a privacy law, or to any health-data or
+  industry standard, and a clean report is not evidence of compliance.
+- **A clean report does not mean a site is secure.** The tool reports what it
+  checked and marks everything it did not check as `NOT_RUN`. It does not
+  replace a review by someone who knows the application.
+- **It never writes, and never calls your functions.** Checks read the system
+  catalog, counts and settings. Rows of application tables are not read.
+- **The access token it can use is powerful.** A fine-grained Supabase token
+  with only "Database Read" could also read logs, backups and the Auth
+  configuration (which contains secrets) when this was tried. Scope it to one
+  project, keep it short-lived, and revoke it when the run is over.
+
+## What it checks
+
+| Check | From |
+|---|---|
+| Credentials left in a source tree | files |
+| RLS policies (through pgrls) | SQL files, or a database connection |
+| Who may call `SECURITY DEFINER` functions, against a declared allowlist | SQL files, database, or Management API |
+| Policy and default-privilege problems pgrls does not cover | database or Management API |
+| Storage buckets: public access, anonymous writes, upload limits | Management API |
+| Scheduled jobs (pg_cron) that failed or stopped | Management API |
+| Whether the platform holds a backup | Management API, opt-in |
+| 24-hour API log summary, counts only | Management API, opt-in |
+| Sign-in settings, reduced to an allowlist so no secret is kept | Management API, opt-in |
+| What an anonymous visitor can read (HEAD requests only) | Data API |
+
+## Quick start
+
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install --require-hashes -r requirements.lock
+python -m webcare check --repo <web project> --migrations <migrations folder>
+```
+
+Live checks need a target declared in `webcare.toml`; copy
+`webcare.example.toml`. Credentials come from environment variables only.
+
+To check migrations on every pull request, see [docs/CI.md](docs/CI.md) and
+the example workflow in `docs/examples/`. What has and has not been verified
+against a real system is listed at the end of [docs/OFFLINE_VM.md](docs/OFFLINE_VM.md).
+
+`report.md` is written in English by default; pass `--lang th` (or set `WEBCARE_LANG=th`) for Thai.
+
+## Use it together with
+
+This toolkit is a thin layer. It is meant to sit beside these, not replace them.
+
+- **[pgrls](https://github.com/pgrls/pgrls)** is the RLS analyser this toolkit
+  calls. For a site whose browser code reads and writes tables directly, use
+  pgrls itself as well: lint migrations in CI, and run `pgrls verify` against
+  a staging database or a Supabase branch. Its probing mode inserts test rows
+  inside a transaction it rolls back and needs an administrator role, so keep
+  that mode off production.
+- **Supabase Security Advisor** (dashboard, `supabase db advisors`, or the MCP
+  `get_advisors` tool) is the platform's own check and sees things this
+  toolkit does not. Run it every time; the report lists it as not run because
+  the toolkit cannot call it.
+- **Supabase's official agent skills**, `supabase` and
+  `supabase-postgres-best-practices`. The skill in this repository tells an
+  agent to consult them and adds a working method and guard rails on top.
+
+## Licence and credits
+
+MIT, see [LICENSE](LICENSE). To report a security problem, see
+[SECURITY.md](SECURITY.md).
+
+- **pgrls** (MIT) does the RLS analysis. It is installed at a pinned version
+  and run unmodified.
+- **[database-sentinel](https://github.com/Farenhytee/database-sentinel)**
+  is where three ideas here come from, each written again from scratch:
+  scanning a web project for leaked keys, probing anonymous access with HEAD
+  requests so no row is downloaded, and enforcing read-only in two layers.
+  None of its code is included.
+- **Supabase's agent skills** guided the working method in the skill.
+- **[supabase-security-skill](https://github.com/Perufitlife/supabase-security-skill)**
+  was reviewed while designing the guard rails.
+
+Details are in [CREDITS.md](CREDITS.md).

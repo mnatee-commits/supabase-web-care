@@ -1,0 +1,43 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: local-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install pinned dependencies
+        run: pip install --require-hashes -r requirements-dev.lock
+      - name: Run the tests against a throwaway Postgres
+        env:
+          # The service container above exists only for this job.
+          WEBCARE_TEST_ADMIN_DSN: host=127.0.0.1 port=5432 user=postgres dbname=postgres
+          PGPASSWORD: local-ci-only
+        run: python -m pytest -q
+      - name: The toolkit finds no credential in its own tree
+        run: python -m webcare secrets . --fail-on high
