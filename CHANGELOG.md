@@ -3,6 +3,12 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.13.0
+- `--with-advisors`: reads Supabase's own security lints through the Management API
+  (`advisors_read`). Findings carry a count and the first few object names; lints
+  the owner has reviewed go in a target's `advisors_ignore` and are counted, not
+  hidden. Not yet run against the real endpoint.
+
 ## 1.12.0
 - READMEs gain a "Use it together with" section (pgrls, Security Advisor,
   Supabase's skills) and name the projects credited.

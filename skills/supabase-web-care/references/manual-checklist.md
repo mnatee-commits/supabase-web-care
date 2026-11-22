@@ -6,6 +6,8 @@ Everything here is read-only. The SQL reads the system catalog and can run as th
 
 ## Supabase Security Advisor
 
+On the `--via-api` route, `--with-advisors` reads the security lints for you; the manual run below also covers the performance and health advisors.
+
 Supabase's own linter sees project settings the catalog does not show. Call the MCP `get_advisors` tool for the project (security type), or run `supabase db advisors` with a scoped access token. Needs internet, so it cannot run on an isolated machine. Record the project reference and the time of the run.
 
 ## Public Storage buckets

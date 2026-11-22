@@ -21,8 +21,7 @@ English in both.
   let the browser read and write tables directly and rely on RLS. For those
   sites the policy check matters most, and it runs only from SQL files or over
   a direct database connection (through pgrls). On the `--via-api` route the
-  report shows `rls_live` as `NOT_RUN`. Do not read the rest of that report as
-  covering your tables.
+  report shows `rls_live` as `NOT_RUN`. Do not read the rest of that report as covering your tables. Adding `--with-advisors` brings in Supabase's own security lints, which include several RLS checks (RLS off, always-true policies); that narrows the gap but is not pgrls's policy analysis.
 - **It certifies nothing.** The checks follow Supabase's own guidance. They
   are not mapped to OWASP, to a privacy law, or to a health-data standard, and
   a clean report is not evidence of compliance.
@@ -164,6 +163,7 @@ unset WEBCARE_ACCESS_TOKEN
   run returned, because those two fields can hold keys or real data. This
   check gives a result on `--via-api` only. Connected as `webcare_auditor` it
   is `NOT_RUN`, because pg_cron shows each role only its own jobs.
+- **Supabase's own security lints (`advisors`)** run only with `--with-advisors`. One more GET reads the platform's Security Advisor: lint names, and the names of the objects they flag. Several of its lints are RLS checks. A lint can name hundreds of objects, so a finding shows the count and the first few names. List lints you have reviewed and accept (for example functions that signed-in users may call by design) in the target's `advisors_ignore`; they are counted in a note, never hidden, and you must not add an entry to make a new finding go away. Supabase documents the `advisors_read` permission for this. It is the platform's verdict, not pgrls's analysis of what each policy lets a caller do.
 - **Backups (`health_backups`)** runs only with `--with-backups`. One more GET
   reads the project's backup list, which holds dates and statuses only. It
   reports when no completed backup exists (high for real data, low for

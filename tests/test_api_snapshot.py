@@ -72,6 +72,16 @@ class FakeManagementApi(BaseHTTPRequestHandler):
         self.send_response(500)
         self.end_headers()
 
+    advisors = [
+        {"name": "rls_disabled_in_public", "title": "RLS Disabled in Public", "level": "ERROR", "facing": "EXTERNAL",
+         "categories": ["SECURITY"], "description": "Table is public but RLS is not enabled.",
+         "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0013_rls_disabled_in_public",
+         "count": 2, "findings": [{"detail": "x", "metadata": {"schema": "public", "name": "orders", "type": "table"}},
+                                  {"detail": "x", "metadata": {"schema": "public", "name": "notes", "type": "table"}}]},
+        {"name": "authenticated_security_definer_function_executable", "title": "Signed-in users can execute", "level": "WARN",
+         "description": "Functions run with the owner's privileges.", "remediation": "https://example.invalid/x",
+         "count": 300, "findings": [{"metadata": {"schema": "public", "name": f"fn_{i}"}} for i in range(300)]},
+    ]
     auth = {"disable_signup": False, "external_anonymous_users_enabled": False, "mailer_autoconfirm": False,
             "password_min_length": 6, "password_hibp_enabled": True, "mfa_totp_verify_enabled": True,
             "jwt_exp": 3600, "refresh_token_rotation_enabled": True, "security_captcha_enabled": True,
@@ -100,6 +110,13 @@ class FakeManagementApi(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"result": type(self).log_rows} if status == 200 else {"message": "no"}).encode())
+            return
+        if self.path == f"/v1/projects/{REF}/advisors/security":
+            status = 403 if type(self).mode == "advisors_403" else 200
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"lints": type(self).advisors} if status == 200 else {"message": "no"}).encode())
             return
         if self.path == f"/v1/projects/{REF}/config/auth":
             status = 403 if type(self).mode == "auth_403" else 200
@@ -371,3 +388,28 @@ def test_auth_settings_are_read_only_when_asked_and_no_secret_survives(api, tmp_
     api.mode = "auth_403"
     _code, checks, text = run_cli(tmp_path, capsys, *arguments, "--with-auth-config")
     assert checks["auth_config"]["status"] == "ERROR" and "auth_config_read" in checks["auth_config"]["reason"]
+
+
+def test_advisors_are_read_only_when_asked_and_a_long_lint_stays_short(api, tmp_path, capsys):
+    config = tmp_path / "webcare.toml"
+    config.write_text(
+        f'[[target]]\nname = "staging"\nenv = "staging"\ndata = "synthetic"\nproject_ref = "{REF}"\n'
+        'advisors_ignore = ["authenticated_security_definer_function_executable"]\n'
+    )
+    arguments = ("--via-api", "--target", "staging", "--config", str(config))
+    _code, checks, _text = run_cli(tmp_path, capsys, *arguments)
+    assert checks["advisors"]["status"] == "NOT_RUN" and "--with-advisors" in checks["advisors"]["reason"]
+    assert all(method == "POST" for method, _, _, _ in api.seen)
+
+    api.seen.clear()
+    code, checks, text = run_cli(tmp_path, capsys, *arguments, "--with-advisors")
+    assert [path for method, path, _, _ in api.seen if method == "GET"] == [f"/v1/projects/{REF}/advisors/security"]
+    advisor = checks["advisors"]
+    assert [(f["rule"], f["severity"]) for f in advisor["findings"]] == [("rls_disabled_in_public", "high")]
+    assert "2 objects (for example public.orders, public.notes)" in advisor["findings"][0]["message"]
+    assert "authenticated_security_definer_function_executable (300)" in " ".join(advisor["notes"])
+    assert "fn_17" not in text and TOKEN not in text and code == 1
+
+    api.mode = "advisors_403"
+    _code, checks, _text = run_cli(tmp_path, capsys, *arguments, "--with-advisors")
+    assert checks["advisors"]["status"] == "ERROR" and "advisors_read" in checks["advisors"]["reason"]

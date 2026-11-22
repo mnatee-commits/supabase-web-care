@@ -24,6 +24,7 @@ TITLES_TH = {
     "extra_live": "การตรวจเพิ่มจาก catalog",
     "functions_live": "ฟังก์ชัน SECURITY DEFINER ที่ผู้ไม่ล็อกอินเรียกได้",
     "storage_buckets": "bucket ของ Storage: เปิดสาธารณะหรือไม่ และใครอัปโหลดได้",
+    "advisors": "ผลตรวจความปลอดภัยของ Supabase เอง (Security Advisor)",
     "auth_config": "การตั้งค่าการล็อกอิน (Supabase Auth)",
     "health_cron": "งานตั้งเวลา (pg_cron) ที่ล้มหรือหยุดรัน",
     "health_backups": "backup ของฐานข้อมูลที่ Supabase เก็บไว้",

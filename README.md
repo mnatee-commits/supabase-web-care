@@ -14,8 +14,7 @@ Full manual: [MANUAL.md](MANUAL.md) (English) Â· [README_TH.md](README_TH.md) (à
   Supabase sites let the browser read and write tables directly and rely on
   RLS; for them the policy check is the one that matters most. It runs from
   SQL files or from a direct database connection (through pgrls), not through
-  `--via-api`. On that route the report shows `rls_live` as `NOT_RUN`. Do not
-  read the rest of that report as covering your tables.
+  `--via-api`. On that route the report shows `rls_live` as `NOT_RUN`. Do not read the rest of that report as covering your tables. Adding `--with-advisors` brings in Supabase's own security lints, which include several RLS checks (RLS off, always-true policies); that narrows the gap but is not pgrls's policy analysis.
 - **It certifies nothing.** The checks follow Supabase's own guidance. They
   are not a mapping to OWASP, to a privacy law, or to any health-data or
   industry standard, and a clean report is not evidence of compliance.

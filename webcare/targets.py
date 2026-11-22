@@ -42,6 +42,7 @@ class Target:
     expected_anon_functions: tuple[str, ...] = field(default_factory=tuple)
     expected_public_buckets: tuple[str, ...] = field(default_factory=tuple)
     expected_open_signup: bool = False  # anyone may create an account, on purpose
+    advisors_ignore: tuple[str, ...] = field(default_factory=tuple)  # Security Advisor lints already reviewed
     expected_cron_jobs: tuple[str, ...] = field(default_factory=tuple)  # pg_cron jobs that must exist
 
     @property
@@ -221,9 +222,21 @@ def load_targets(path: Path) -> dict[str, Target]:
             ),
             expected_public_buckets=tuple(str(b) for b in entry.get("expected_public_buckets", [])),
             expected_open_signup=entry.get("expected_open_signup") is True,
+            advisors_ignore=_lint_names(entry.get("advisors_ignore", []), path, name),
             expected_cron_jobs=tuple(str(j) for j in entry.get("expected_cron_jobs", [])),
         )
     return targets
+
+
+def _lint_names(value, path: Path, target: str) -> tuple[str, ...]:
+    names = tuple(str(item) for item in value) if isinstance(value, list) else ()
+    for item in names:
+        if not re.fullmatch(r"[a-z0-9_]{3,80}", item):
+            raise Refusal(
+                f"{path}: target {target!r} lists advisors_ignore entry {item!r}, which is not "
+                "a lint name such as authenticated_security_definer_function_executable"
+            )
+    return names
 
 
 def get_target(path: Path, name: str) -> Target:

@@ -13,8 +13,10 @@ Two other endpoints exist, each only when the operator asks for it. With
 carries no SQL and returns no data from the database. With `--with-logs`: a
 GET of the log query endpoint carrying one fixed counting query (`logs.py`).
 With `--with-auth-config`: a GET of the Auth configuration, whose answer is
-reduced to an allowlist before anything reads it (`auth_config.py`). No other
-endpoint is ever called.
+reduced to an allowlist before anything reads it (`auth_config.py`). With
+`--with-advisors`: a GET of the security advisors (`advisors.py`), which holds
+lint names and the names of the objects they flag. No other endpoint is ever
+called.
 
 What this route costs: it needs an account access token, which is a stronger
 credential than the audit role. Through the same endpoint that token can read
@@ -176,6 +178,32 @@ def backup_list(target: Target, owner_approved: bool, token_env: str = DEFAULT_T
         request, token, "the backup list endpoint",
         "the access token may not list this project's backups; a fine-grained token "
         "needs the backups_read permission for this project",
+    )
+
+
+def advisors_security(target: Target, owner_approved: bool, token_env: str = DEFAULT_TOKEN_ENV, api_base: str = ""):
+    """GET the project's security advisors (Supabase's own lints)."""
+    target.ensure_allowed(owner_approved)
+    if not target.project_ref:
+        raise Refusal(
+            f"target {target.name!r} declares no project_ref, so there is no project to ask"
+        )
+    token = os.environ.get(token_env, "")
+    check_token(token, token_env)
+    base = endpoint(target.project_ref, api_base).removesuffix("/database/query/read-only")
+    request = urllib.request.Request(
+        f"{base}/advisors/security",
+        method="GET",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+            "User-Agent": f"supabase-web-care/{__version__}",
+        },
+    )
+    return _send(
+        request, token, "the security advisors endpoint",
+        "the access token may not read this project's advisors; a fine-grained token "
+        "needs the advisors_read permission for this project",
     )
 
 

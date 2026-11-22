@@ -30,9 +30,9 @@ MANUAL_ITEMS: tuple[ManualItem, ...] = (
         "advisor",
         "Supabase Security Advisor",
         "รันผ่าน Supabase MCP `get_advisors` หรือคำสั่ง `supabase db advisors` "
-        "(ต้องต่ออินเทอร์เน็ต จึงรันบนเครื่องที่ตัดเน็ตไม่ได้)",
+        "(ต้องต่ออินเทอร์เน็ต จึงรันบนเครื่องที่ตัดเน็ตไม่ได้) ถ้าใช้ `--via-api` ให้เพิ่ม `--with-advisors` เพื่ออ่านผลตรวจด้านความปลอดภัยให้",
         title_en='Supabase Security Advisor',
-        how_en='Run it through the Supabase MCP `get_advisors` tool or `supabase db advisors` (it needs the internet, so it cannot run on a machine that is cut off).',
+        how_en='Run it through the Supabase MCP `get_advisors` tool or `supabase db advisors` (it needs the internet, so it cannot run on a machine that is cut off). On the `--via-api` route, `--with-advisors` reads the security lints for you.',
     ),
     ManualItem(
         "storage_buckets",

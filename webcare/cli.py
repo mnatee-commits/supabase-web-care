@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from . import (
-    __version__, anon_probe, api_snapshot, auth_config, backups, baseline, functions_static, health, live, logs, pgrls_runner, secret_scan,
+    __version__, advisors, anon_probe, api_snapshot, auth_config, backups, baseline, functions_static, health, live, logs, pgrls_runner, secret_scan,
     snapshot, storage_buckets,
 )
 from .model import ERROR, NOT_RUN, CheckResult, Refusal, severity_at_least
@@ -39,6 +39,7 @@ TITLES = {
     "extra_live": "Catalog checks beyond pgrls",
     "functions_live": "SECURITY DEFINER functions callable without signing in",
     "storage_buckets": storage_buckets.TITLE,
+    "advisors": advisors.TITLE,
     "auth_config": auth_config.TITLE,
     "health_cron": health.TITLE,
     "health_backups": backups.TITLE,
@@ -134,6 +135,11 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument(
         "--write-baseline",
         help="record the current findings from SQL files into this file, to start from",
+    )
+    check.add_argument(
+        "--with-advisors", action="store_true",
+        help="with --via-api, also read Supabase's own security lints (one GET; the token then "
+        "also needs advisors_read)",
     )
     check.add_argument(
         "--with-auth-config", action="store_true",
@@ -352,6 +358,19 @@ def _snapshot_checks(
             failed = CheckResult(id="health_cron", title=health.TITLE, status=ERROR)
             failed.reason = str(refusal)
             results.append(failed)
+        if args.with_advisors:
+            try:
+                results.append(
+                    advisors.run(
+                        target,
+                        lambda: api_snapshot.advisors_security(target, args.owner_approved, args.token_env),
+                        f"security advisors of project {target.project_ref}, read through the Management API",
+                    )
+                )
+            except Refusal as refusal:
+                failed = CheckResult(id="advisors", title=advisors.TITLE, status=ERROR)
+                failed.reason = str(refusal)
+                results.append(failed)
         if args.with_auth_config:
             try:
                 results.append(
@@ -626,6 +645,9 @@ def cmd_check(args: argparse.Namespace) -> int:
 
     if not any(check.id == "storage_buckets" for check in checks):
         checks.append(_not_run("storage_buckets", "buckets are read through --via-api or a database connection"))
+    if not any(check.id == "advisors" for check in checks):
+        reason = advisors.NOT_ASKED if args.via_api else "the advisors are only read with --via-api --with-advisors"
+        checks.append(_not_run("advisors", reason))
     if not any(check.id == "auth_config" for check in checks):
         reason = auth_config.NOT_ASKED if args.via_api else "sign-in settings are only read with --via-api --with-auth-config"
         checks.append(_not_run("auth_config", reason))
