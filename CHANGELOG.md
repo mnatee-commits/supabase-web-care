@@ -3,6 +3,11 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.14.0
+- New catalog check `default_table_privileges`: reports when the schema's default
+  privileges grant every new table or sequence to `anon`, `authenticated` or `PUBLIC`.
+  The table-level twin of `default_function_privileges`; low severity.
+
 ## 1.13.0
 - `--with-advisors`: reads Supabase's own security lints through the Management API
   (`advisors_read`). Findings carry a count and the first few object names; lints

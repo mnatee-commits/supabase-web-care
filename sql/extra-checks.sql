@@ -211,3 +211,39 @@ left join pg_catalog.pg_roles g on g.oid = s.grantee
 where r.rolname = 'supabase_admin'
 group by n.nspname, r.rolname, s.defaclrole
 order by 1;
+
+-- check: default_table_privileges
+-- severity: low
+-- title: New tables and sequences are granted to API roles by default
+-- why: Default privileges on the schema grant access to every new table (and
+--      sequence) to the listed roles from the moment it is created. A migration
+--      that adds a table and forgets both the REVOKE and the ALTER TABLE ...
+--      ENABLE ROW LEVEL SECURITY serves it through the Data API at once.
+--      Supabase has announced that new tables will stop being exposed by
+--      default; this check reports what the project's own catalog still grants.
+--      service_role is left out: it is the server-side role and bypasses RLS by
+--      design. The platform's superuser is left out too; a project cannot change it.
+with scoped as (
+  select d.defaclrole, d.defaclnamespace, d.defaclobjtype, a.grantee
+  from pg_catalog.pg_default_acl d
+  cross join lateral pg_catalog.aclexplode(d.defaclacl) a
+  join pg_catalog.pg_namespace n on n.oid = d.defaclnamespace
+  where d.defaclobjtype in ('r', 'S')
+    and a.grantee <> d.defaclrole
+    and n.nspname = any(%(schemas)s)
+)
+select
+  quote_ident(n.nspname) || ' (' || case s.defaclobjtype when 'r' then 'tables' else 'sequences' end
+    || ' created by ' || r.rolname || ')' as location,
+  'every new ' || case s.defaclobjtype when 'r' then 'table' else 'sequence' end || ' is granted to '
+    || string_agg(distinct coalesce(g.rolname, 'PUBLIC'), ', ' order by coalesce(g.rolname, 'PUBLIC'))
+    || ' from the moment it is created; with row-level security off it is served through the Data API at once, so each migration has to revoke what it does not intend'
+    as detail
+from scoped s
+join pg_catalog.pg_namespace n on n.oid = s.defaclnamespace
+join pg_catalog.pg_roles r on r.oid = s.defaclrole
+left join pg_catalog.pg_roles g on g.oid = s.grantee
+where r.rolname <> 'supabase_admin'
+  and (s.grantee = 0 or g.rolname in ('anon', 'authenticated'))
+group by n.nspname, r.rolname, s.defaclrole, s.defaclobjtype
+order by 1;

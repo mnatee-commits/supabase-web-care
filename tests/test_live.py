@@ -16,6 +16,7 @@ def test_extra_checks_file_holds_only_selects():
         "secdef_trusts_current_user",
         "default_function_privileges",
         "default_function_privileges_platform",
+        "default_table_privileges",
     ]
 
 
@@ -218,6 +219,10 @@ def test_guard_that_trusts_current_user_and_default_privileges_are_found(pg):
     assert "supabase_admin" not in defaults[0].location
     platform = grouped["default_function_privileges_platform"]
     assert [f.severity for f in platform] == ["info"] and "supabase_admin" in platform[0].location
+    tables = grouped["default_table_privileges"]
+    assert len(tables) == 1 and tables[0].location.startswith("public (tables created by ")
+    assert "anon, authenticated" in tables[0].message and "service_role" not in tables[0].message
+    assert tables[0].severity == "low"
     assert not any("could not run" in note for note in result.notes)
 
 
@@ -230,4 +235,5 @@ def test_comments_and_strings_naming_current_user_do_not_count(pg):
     grouped = _by_rule(result)
     assert "secdef_trusts_current_user" not in grouped
     assert "default_function_privileges" not in grouped
+    assert "default_table_privileges" not in grouped
     assert not any("could not run" in note for note in result.notes)

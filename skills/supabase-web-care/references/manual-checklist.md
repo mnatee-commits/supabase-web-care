@@ -68,7 +68,7 @@ Confirm a lockfile is committed for each package manager in use, and that no wor
 
 ## What the toolkit already ran, for reference
 
-In a live run the toolkit executes the six queries in `sql/extra-checks.sql`: UPDATE policies with no matching SELECT policy, policies calling the deprecated `auth.role()`, Storage policies that allow upload but not replace, SECURITY DEFINER functions that read `current_user`, default privileges that make new functions executable by API roles, and (as information only) the same defaults of the platform's own `supabase_admin` role. It also lists the SECURITY DEFINER functions `anon` may execute. Without the toolkit, those queries can be run by hand as the audit role.
+In a live run the toolkit executes the seven queries in `sql/extra-checks.sql`: UPDATE policies with no matching SELECT policy, policies calling the deprecated `auth.role()`, Storage policies that allow upload but not replace, SECURITY DEFINER functions that read `current_user`, default privileges that make new functions, tables and sequences available to API roles, and (as information only, for functions) the same defaults of the platform's own `supabase_admin` role. It also lists the SECURITY DEFINER functions `anon` may execute. Without the toolkit, those queries can be run by hand as the audit role.
 
 ## API logs for functions open to anonymous callers
 

@@ -37,7 +37,7 @@ English in both.
 | `CHAT-INSTRUCTIONS.md` | The same text, for chat platforms without a skill system |
 | `webcare/` | The Python toolkit: credential scan, pgrls runner, function privileges, catalog checks, anonymous access, Storage buckets, sign-in settings, scheduled jobs (pg_cron), backups, log summary, report |
 | `sql/auditor-role.sql` | Creates the `webcare_auditor` role, which can read the system catalog only |
-| `sql/extra-checks.sql` | Six SELECT statements covering what pgrls does not |
+| `sql/extra-checks.sql` | Seven SELECT statements covering what pgrls does not |
 | `sql/catalog-snapshot.sql` | One SELECT that takes a snapshot of the database structure, for machines that cannot reach the database |
 | `docs/OFFLINE_VM.md` | Step-by-step run on a machine cut off from the internet, and the list of what has not been verified |
 | `docs/CI.md` | Checking migrations on every pull request |

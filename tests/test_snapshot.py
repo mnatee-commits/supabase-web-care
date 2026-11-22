@@ -36,6 +36,7 @@ def make_snapshot(**overrides) -> dict:
             ],
             "default_function_privileges": [],
             "default_function_privileges_platform": [],
+            "default_table_privileges": [],
         },
     }
     data.update(overrides)

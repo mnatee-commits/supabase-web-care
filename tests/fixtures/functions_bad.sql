@@ -51,3 +51,6 @@ begin
   end if;
 end $$;
 alter default privileges for role supabase_admin in schema public grant execute on functions to anon;
+
+-- New tables are granted to the API roles by default: the table-level twin of the line above.
+alter default privileges in schema public grant select, insert on tables to anon, authenticated;

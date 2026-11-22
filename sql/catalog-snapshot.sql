@@ -239,6 +239,35 @@ select jsonb_build_object(
         order by 1
         limit 500
       ) q
+    ), '[]'::jsonb),
+    'default_table_privileges', coalesce((
+      select jsonb_agg(to_jsonb(q)) from (
+        with scoped as (
+          select d.defaclrole, d.defaclnamespace, d.defaclobjtype, a.grantee
+          from pg_catalog.pg_default_acl d
+          cross join lateral pg_catalog.aclexplode(d.defaclacl) a
+          join pg_catalog.pg_namespace n on n.oid = d.defaclnamespace
+          where d.defaclobjtype in ('r', 'S')
+            and a.grantee <> d.defaclrole
+            and n.nspname = any(array['public']::text[])
+        )
+        select
+          quote_ident(n.nspname) || ' (' || case s.defaclobjtype when 'r' then 'tables' else 'sequences' end
+            || ' created by ' || r.rolname || ')' as location,
+          'every new ' || case s.defaclobjtype when 'r' then 'table' else 'sequence' end || ' is granted to '
+            || string_agg(distinct coalesce(g.rolname, 'PUBLIC'), ', ' order by coalesce(g.rolname, 'PUBLIC'))
+            || ' from the moment it is created; with row-level security off it is served through the Data API at once, so each migration has to revoke what it does not intend'
+            as detail
+        from scoped s
+        join pg_catalog.pg_namespace n on n.oid = s.defaclnamespace
+        join pg_catalog.pg_roles r on r.oid = s.defaclrole
+        left join pg_catalog.pg_roles g on g.oid = s.grantee
+        where r.rolname <> 'supabase_admin'
+          and (s.grantee = 0 or g.rolname in ('anon', 'authenticated'))
+        group by n.nspname, r.rolname, s.defaclrole, s.defaclobjtype
+        order by 1
+        limit 500
+      ) q
     ), '[]'::jsonb)
   )
 ) as snapshot;
