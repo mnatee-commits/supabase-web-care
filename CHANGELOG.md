@@ -15,6 +15,8 @@ summarises them.
   hidden. Not yet run against the real endpoint.
 
 ## 1.12.0
+- Run against a real project through the Management API with `--lang th`: every row
+  matched the 1.11.1 run, and an independent secret scan of this repository found nothing.
 - READMEs gain a "Use it together with" section (pgrls, Security Advisor,
   Supabase's skills) and name the projects credited.
 - `report.md` can be written in English or Thai: `--lang en` (now the default)
