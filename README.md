@@ -73,7 +73,7 @@ To check migrations on every pull request, use the action
 code scanning can show findings on the lines of a pull request. What has and has not been verified
 against a real system is listed at the end of [docs/OFFLINE_VM.md](docs/OFFLINE_VM.md).
 
-`--focus functions,tables` (or any of `secrets`, `storage`, `extensions`, `auth`,
+`--focus functions,tables` (or any of `secrets`, `edge`, `storage`, `extensions`, `auth`,
 `advisors`, `health`) checks only those areas; `--profile quick` checks files only.
 `--only table_writes` names exact checks, and `--fail-groups security` keeps health
 findings from failing CI. What is left out is listed as `NOT_RUN`.

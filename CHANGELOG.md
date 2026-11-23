@@ -3,6 +3,20 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.36.0
+- New check `edge_functions`, from files only: the code under `supabase/functions/<name>/`
+  and `verify_jwt` in `supabase/config.toml` (`--functions-dir` names another folder).
+  `edge_open_to_anyone` (verify_jwt off and no caller check; high with the service role
+  key), `edge_service_role_no_caller_check` (the service role key used without finding out
+  who is calling), `edge_cors_any_origin`, and `edge_verify_jwt_off` as information for a
+  webhook that checks callers itself. Comments are not read as code, and local files a
+  function imports (such as `_shared/cors.ts`) are read with it.
+- The check is part of every run that reads files, the GitHub Action included; new focus
+  area `edge`; findings carry file and line for SARIF; a baseline can cover them; it
+  follows `--changed-since`.
+- Limits, stated in the report each time: files cannot show a function deployed with
+  `--no-verify-jwt` or switched in the dashboard, and the findings are signs, not proof.
+
 ## 1.35.0
 Fixes from the fourth outside review (Gemini, 23 November 2026, of 1.26.0 to 1.34.0).
 - The real-data question at a terminal: a run from a `--snapshot` file no longer asks,

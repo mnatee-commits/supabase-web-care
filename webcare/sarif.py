@@ -30,7 +30,7 @@ from .model import CheckResult
 SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 INFORMATION_URI = "https://github.com/mnatee-commits/supabase-web-care"
 LEVELS = {"high": "error", "medium": "warning", "low": "note"}
-FILE_CHECKS = ("secrets", "rls_static", "functions_static")
+FILE_CHECKS = ("secrets", "rls_static", "functions_static", "edge_functions")
 
 _IN_BRACKETS = re.compile(r"\((.+):(\d+)\)\s*$")  # "public.f (dir/(group)/0001.sql:12)"
 _PLAIN = re.compile(r"^(.+):(\d+)$")  # "src/app/(dashboard)/actions.ts:15"
@@ -119,6 +119,13 @@ class Locator:
 
     def locate(self, check_id: str, location: str) -> Optional[tuple[str, int]]:
         text = location.strip()
+        if check_id == "edge_functions":
+            # Already a path from the current directory, with its line.
+            plain = _PLAIN.match(text)
+            if plain and Path(plain.group(1)).is_file():
+                relative = _relative(Path(plain.group(1)))
+                return (relative, int(plain.group(2))) if relative else None
+            return None
         if check_id == "secrets":
             match = _PLAIN.match(text)
         elif check_id == "functions_static":

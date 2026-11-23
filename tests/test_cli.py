@@ -45,6 +45,7 @@ def test_offline_check_writes_a_report_and_fails_on_high(tmp_path):
         "secrets": "PASS",
         "rls_static": "FINDINGS",
         "functions_static": "FINDINGS",
+        "edge_functions": "NOT_RUN",
         "rls_live": "NOT_RUN",
         "extra_live": "NOT_RUN",
         "functions_live": "NOT_RUN",

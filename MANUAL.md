@@ -94,13 +94,31 @@ A project that already has old migrations can adopt this without fixing them
 first. Run once with `--write-baseline webcare-baseline.json` to record what is
 found today, then run with `--baseline webcare-baseline.json`. The report then
 counts only what is new and always says how many findings the baseline
-covered. A baseline works for checks that read SQL files only; a leaked
-credential or a finding from a live system cannot be excused this way. See
+covered. A baseline works for checks that read SQL files and Edge Function
+code only; a leaked credential or a finding from a live system cannot be excused
+this way. See
 `docs/CI.md` for wiring this into CI.
 
 Use this step to check a new migration before applying it. The result depends
 on file order: if the file that revokes a privilege is read before the file
 that creates the function, the function counts as still open.
+
+Edge Functions are read from files too (the `edge_functions` check): the code
+under `supabase/functions/<name>/` of each `--repo`, with `verify_jwt` from
+`supabase/config.toml`. Name another folder with `--functions-dir`. It reports
+a function that
+
+- has `verify_jwt` off and no caller check in its files, so anyone who knows the
+  address can run it (`edge_open_to_anyone`; high when it uses the service role key)
+- uses the service role key without finding out who is calling: the platform's JWT
+  check lets in every signed-in user, and the legacy anon key is a valid JWT too
+  (`edge_service_role_no_caller_check`)
+- answers browsers on any website (`edge_cors_any_origin`)
+
+A function with `verify_jwt` off that checks a signature or a secret itself, as a
+webhook does, is listed as information only. These are signs, not proof: a check
+inside an imported package is not seen, and files cannot show a function deployed
+with `--no-verify-jwt`, so compare with the dashboard.
 
 ### Check from the database
 
@@ -251,6 +269,7 @@ python -m webcare check --snapshot staging.json --target <target name> --skip se
 | `secrets` | credentials left in the source tree |
 | `functions` | who may call `SECURITY DEFINER` functions, from files and the catalog; guards that trust `current_user`; default privileges of new functions |
 | `tables` | RLS policies (pgrls), table write privileges, default privileges of new tables, views that run as their owner, schemas left out of the checks, what an anonymous visitor can read (switches `--with-data-api` on) |
+| `edge` | Edge Functions from files: `verify_jwt`, the service role key without a caller check, any-origin CORS |
 | `storage` | Storage policies and buckets |
 | `extensions` | pg_net, Vault and pg_cron reachable by the API roles |
 | `realtime` | tables Realtime sends out with RLS off; Broadcast and Presence policies open to everyone |

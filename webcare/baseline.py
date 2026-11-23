@@ -23,12 +23,12 @@ from pathlib import Path
 from .model import FINDINGS, PASS, CheckResult, Refusal
 
 FORMAT = "webcare-baseline/1"
-BASELINED_CHECKS = ("rls_static", "functions_static")
-_LINE = re.compile(r":\d+\)")
+BASELINED_CHECKS = ("rls_static", "functions_static", "edge_functions")
+_LINE = re.compile(r":\d+(?=\)|$)")  # "(a.sql:10)" and "functions/x/index.ts:10"
 
 
 def key(check_id: str, rule: str, location: str) -> tuple[str, str, str]:
-    return (check_id, rule, _LINE.sub(")", location))
+    return (check_id, rule, _LINE.sub("", location))
 
 
 def collect(checks: list[CheckResult]) -> list[dict]:

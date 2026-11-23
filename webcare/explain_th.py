@@ -66,6 +66,10 @@ RULES: dict[str, str] = {
     "storage_bucket_upsert_incomplete": "ผู้ล็อกอินอัปโหลดใน bucket นี้ได้แต่แทนที่ไฟล์ไม่ได้ เพิ่ม policy SELECT และ UPDATE ของ bucket นี้",
     "expected_public_bucket_missing": "รายการ bucket สาธารณะที่ประกาศไว้ มี bucket ที่ไม่มีแล้วหรือไม่ได้เปิด ให้ลบออกจากรายการ",
     # extensions and realtime
+    "edge_open_to_anyone": "Edge Function นี้ปิดการตรวจ JWT และไม่พบการตรวจผู้เรียกในโค้ด ใครรู้ที่อยู่ก็เรียกได้ ให้ตรวจ JWT รหัสลับร่วม หรือลายเซ็น webhook ในฟังก์ชัน หรือเปิด verify_jwt",
+    "edge_verify_jwt_off": "Edge Function นี้ปิดการตรวจ JWT แต่ดูเหมือนตรวจผู้เรียกเอง ซึ่งเป็นรูปแบบปกติของ webhook ให้ยืนยันว่าทุกเส้นทางในฟังก์ชันผ่านการตรวจ",
+    "edge_service_role_no_caller_check": "Edge Function นี้ใช้ service role key ซึ่งข้าม RLS แต่ไม่พบการตรวจว่าผู้เรียกเป็นใคร ผู้ล็อกอินทุกคนหรือผู้ถือ anon key อาจสั่งให้ทำงานด้วยสิทธิ์เต็ม ให้ตรวจตัวผู้เรียกและสิทธิ์ก่อนทำงาน",
+    "edge_cors_any_origin": "Edge Function นี้ตอบเบราว์เซอร์จากทุกเว็บไซต์ (Access-Control-Allow-Origin: *) ให้ระบุเฉพาะที่อยู่เว็บของเราเอง เว้นแต่ตั้งใจให้ทุกเว็บเรียกได้",
     "extension_net_callable": "role ของ API เรียก pg_net ได้ ฐานข้อมูลจะยิง HTTP ไปที่ไหนก็ได้แทนเขา บน Supabase schema net เป็นของ supabase_admin จึงถอนสิทธิ์เองไม่ได้ ถ้าไม่มีอะไรใช้ pg_net ให้ปิด extension ถ้ามีให้ขอ Supabase ถอนสิทธิ์",
     "extension_vault_reachable": "role ของ API อ่าน Vault หรือเรียกฟังก์ชันของมันได้ ความลับใน Vault อาจหลุด ต้องถอนสิทธิ์ทันที",
     "extension_cron_reachable": "role ของ API ตั้งงานตามเวลาหรืออ่านรายการงานได้ ต้องถอนสิทธิ์",

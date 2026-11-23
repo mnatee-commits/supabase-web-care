@@ -22,6 +22,7 @@ TITLES_TH = {
     "secrets": "key และรหัสผ่านที่ค้างอยู่ในไฟล์",
     "rls_static": "นโยบาย RLS จากไฟล์ SQL (pgrls แบบออฟไลน์)",
     "functions_static": "ฟังก์ชัน SECURITY DEFINER จากไฟล์ SQL (ใครเรียกได้, search_path)",
+    "edge_functions": "Edge Functions จากไฟล์ (ใครเรียกได้ และทำงานด้วยสิทธิ์ใด)",
     "rls_live": "นโยบาย RLS จากฐานข้อมูล (pgrls)",
     "storage_live": "นโยบายของ Storage (pgrls)",
     "extra_live": "การตรวจเพิ่มจาก catalog",
@@ -102,7 +103,7 @@ FIRST_STEPS = 3
 _VISITOR_RULES = frozenset({
     "storage_bucket_public", "realtime_table_without_rls", "realtime_messages_open",
     "auth_signup_open", "auth_anonymous_signins", "ssl_not_enforced", "database_open_to_every_address",
-    "secdef_public_execute", "log_anon_rpc_unexpected",
+    "secdef_public_execute", "log_anon_rpc_unexpected", "edge_open_to_anyone",
 })
 _VISITOR_PREFIXES = ("anon_", "storage_anon_", "secdef_anon_")
 _VISITOR_ROLE = re.compile(r"\banon\b|\bPUBLIC\b")

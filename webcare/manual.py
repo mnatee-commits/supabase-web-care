@@ -67,11 +67,11 @@ MANUAL_ITEMS: tuple[ManualItem, ...] = (
         how_en='A value in the JWT does not change until the token is refreshed. Check that removing a permission takes effect within a time you accept.',
     ),
     ManualItem(
-        "edge_functions",
-        "Edge Function ที่ไม่ตรวจ JWT",
-        "ตรวจค่า `verify_jwt` ของแต่ละฟังก์ชัน และตรวจว่าโค้ดเช็คตัวตนผู้เรียกเองเมื่อปิดไว้",
-        title_en='Edge Functions that do not verify the JWT',
-        how_en="Check each function's `verify_jwt` setting, and where it is off, that the code checks the caller's identity itself.",
+        "edge_functions_deployed",
+        "Edge Function ที่ deploy อยู่จริง",
+        "การตรวจ `edge_functions` อ่านได้แค่ไฟล์ ให้เปิดหน้า Edge Functions ใน dashboard เทียบค่า Verify JWT ของแต่ละฟังก์ชันกับ `config.toml` และตรวจว่าโค้ดที่ deploy ตรงกับใน repo",
+        title_en='Edge Functions as they are deployed',
+        how_en="The `edge_functions` check reads files only. In the dashboard, compare each function's Verify JWT setting with `config.toml`, and check that the deployed code is the code in the repository.",
     ),
     ManualItem(
         "access_tokens",

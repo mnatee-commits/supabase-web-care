@@ -46,6 +46,7 @@ AREAS: dict[str, Area] = {
         frozenset({"realtime_table_without_rls", "realtime_messages_open",
                    "realtime_messages_open_to_signed_in"}),
     ),
+    "edge": Area(frozenset({"edge_functions"})),
     "parity": Area(frozenset({"parity"})),
     "platform": Area(frozenset({"platform"}), optional=("with_platform",)),
     "auth": Area(frozenset({"auth_config"}), optional=("with_auth_config",)),
@@ -86,7 +87,7 @@ def catalog_ids() -> set[str]:
     return set().union(*(area.catalog for area in AREAS.values()))
 ALL_OPTIONAL = ("with_advisors", "with_auth_config", "with_backups", "with_logs", "with_performance",
                 "with_data_api", "with_platform")
-STATIC = ("rls_static", "functions_static")
+STATIC = ("rls_static", "functions_static", "edge_functions")
 LIVE = ("rls_live", "storage_live", "extra_live", "functions_live", "storage_buckets",
         "table_writes", "health_cron", "advisors", "auth_config", "health_backups", "health_logs",
         "db_health", "advisors_performance", "data_api", "parity", "platform")

@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from . import (
-    __version__, advisors, anon_probe, api_snapshot, auth_config, backups, baseline, changes, data_api, setup_init, db_health, functions_static, health, inventory, live, logs, pgrls_runner, secret_scan,
+    __version__, advisors, anon_probe, api_snapshot, auth_config, backups, baseline, changes, data_api, setup_init, db_health, edge_functions, functions_static, health, inventory, live, logs, pgrls_runner, secret_scan,
     focus, parity, platform, sarif, snapshot, storage_buckets, table_writes,
 )
 from .model import ERROR, NOT_RUN, CheckResult, Refusal, severity_at_least
@@ -37,6 +37,7 @@ EXIT_REFUSED = 2
 TITLES = {
     "rls_static": "RLS policies from SQL files (pgrls, offline)",
     "functions_static": functions_static.TITLE,
+    "edge_functions": edge_functions.TITLE,
     "rls_live": "RLS policies from the live catalog (pgrls)",
     "storage_live": "Storage policies from the live catalog (pgrls)",
     "extra_live": "Catalog checks beyond pgrls",
@@ -195,6 +196,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--cron-days", type=int, default=health.DEFAULT_WINDOW_DAYS, choices=range(1, health.MAX_WINDOW_DAYS + 1),
         metavar="DAYS", help=f"how far back to look at scheduled-job runs (default: {health.DEFAULT_WINDOW_DAYS})",
     )
+    check.add_argument("--functions-dir", action="append", default=[],
+                       help="folder of Edge Functions, one subfolder each; repeatable "
+                            "(default: supabase/functions under each --repo)")
     check.add_argument("--skip", action="append", default=[], choices=["secrets", "static", "live", "probe"], help="leave a group of checks out; repeatable")
     check.add_argument(
         "--focus", action="append", default=[], metavar="AREA",
@@ -1052,6 +1056,10 @@ def cmd_check(args: argparse.Namespace) -> int:
                     )
         checks.append(static)
         checks.append(functions)
+        edge = edge_functions.run(repos, args.functions_dir, changed, args.changed_since or "")
+        if edge.status != NOT_RUN:
+            requested.add("edge_functions")
+        checks.append(edge)
 
     target_text = "ไม่มี (ตรวจจากไฟล์เท่านั้น)" if args.lang == "th" else "none (files only)"
     if args.snapshot or args.via_api:
