@@ -41,7 +41,23 @@ Nothing at the moment.
 
 ## Planned, not started
 
-Nothing at the moment; ideas are welcome.
+Decided with the owner on 23 November 2026: make the tool easy for beginners who use it
+through an AI assistant, without making it less thorough for specialists.
+
+1. **A summary on the first page of report.md.** One report, not several levels: a short
+   summary first, then the full detail. Ordered by severity, with findings that touch
+   real data or visitors who are not signed in first, and a line in the summary for every
+   check that did not run, so a clean summary is never read as a safe site.
+2. **First-time setup through the AI skill.** The skill asks the owner a short set of
+   questions, writes `webcare.toml` and runs the first check. "Does this database hold
+   real data?" defaults to yes, so the owner-approval guard applies when in doubt.
+   `webcare init` asks the same questions for people who type commands themselves.
+3. **A pause before checking real data.** When a target holds real data, the tool first
+   says what it will call and with which permissions, and waits for a yes. Staging runs as
+   now; CI keeps using `--owner-approved` in place of the yes.
+4. **A stable report.json for others to build on.** A `schema_version` field, a published
+   JSON Schema, and a promise not to break the shape within a major version, so others
+   can build dashboards or a point-and-click interface on top of the tool.
 
 ## Waiting on a decision
 
