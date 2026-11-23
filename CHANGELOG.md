@@ -3,6 +3,13 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.33.0
+- report.json carries `schema_version` ("1.0"), and its shape is published in
+  `schema/report.schema.json`. Within 1.x fields are only added; statuses and severities
+  do not change. The test suite validates real reports against the schema. Rules for
+  anything built on it (show NOT_RUN as not known, say when the scope was partial) are in
+  `docs/REPORT_FORMAT.md`. Decided with the owner, so others can build an interface on it.
+
 ## 1.32.0
 - A pause before real data: before `check` or `inventory` of a target that is production
   or holds real data, the tool says which target, which route and what it will read (every

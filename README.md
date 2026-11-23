@@ -82,6 +82,9 @@ findings from failing CI. What is left out is listed as `NOT_RUN`.
 
 What is done, in progress and planned is in [ROADMAP.md](ROADMAP.md).
 
+To build on the results (a dashboard, an interface people click through), read
+`report.json`: its shape is published and kept stable, see [docs/REPORT_FORMAT.md](docs/REPORT_FORMAT.md).
+
 Each version is published as a [GitHub Release](https://github.com/mnatee-commits/supabase-web-care/releases);
 watch the repository for releases to hear about new ones. Pin a release's commit,
 not a branch, in CI.

@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mnatee-commits/supabase-web-care/blob/main/schema/report.schema.json",
+  "title": "supabase-web-care report",
+  "description": "report.json written by `webcare check`. Within schema_version 1.x, fields are only ever added: none is removed, renamed or given another type, and the sets of statuses and severities do not change.",
+  "type": "object",
+  "required": ["tool", "schema_version", "version", "generated_at", "language", "source", "target", "summary", "checks", "manual"],
+  "properties": {
+    "tool": {"const": "supabase-web-care"},
+    "schema_version": {"type": "string", "pattern": "^1\\.[0-9]+$"},
+    "version": {"type": "string"},
+    "generated_at": {"type": "string"},
+    "language": {"enum": ["en", "th"]},
+    "source": {"type": "string"},
+    "target": {"type": "string"},
+    "scope": {"type": ["string", "null"]},
+    "summary": {
+      "type": "object",
+      "required": ["findings", "real_data", "first", "not_checked", "manual_items"],
+      "properties": {
+        "findings": {
+          "type": "object",
+          "required": ["high", "medium", "low", "info"],
+          "properties": {
+            "high": {"type": "integer"}, "medium": {"type": "integer"},
+            "low": {"type": "integer"}, "info": {"type": "integer"}
+          }
+        },
+        "real_data": {"type": "boolean"},
+        "first": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["check", "rule", "severity", "location"],
+            "properties": {
+              "check": {"type": "string"}, "rule": {"type": "string"},
+              "severity": {"enum": ["high", "medium", "low", "info"]}, "location": {"type": "string"}
+            }
+          }
+        },
+        "not_checked": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["check", "status", "reason"],
+            "properties": {
+              "check": {"type": "string"}, "status": {"enum": ["NOT_RUN", "ERROR"]}, "reason": {"type": "string"}
+            }
+          }
+        },
+        "manual_items": {"type": "integer"}
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "status", "evidence", "reason", "findings", "notes"],
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string"},
+          "status": {"enum": ["PASS", "FINDINGS", "NOT_RUN", "ERROR"]},
+          "evidence": {"type": "string"},
+          "reason": {"type": "string"},
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["source", "rule", "severity", "location", "message"],
+              "properties": {
+                "source": {"type": "string"}, "rule": {"type": "string"},
+                "severity": {"enum": ["high", "medium", "low", "info"]},
+                "location": {"type": "string"}, "message": {"type": "string"}
+              }
+            }
+          },
+          "notes": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "manual": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "title", "how"],
+        "properties": {
+          "id": {"type": "string"}, "status": {"const": "NOT_RUN"},
+          "title": {"type": "string"}, "how": {"type": "string"}
+        }
+      }
+    }
+  }
+}

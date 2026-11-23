@@ -37,6 +37,7 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.30 | "In short" summary on the first page of report.md; Thai lines for every pgrls rule | Test suite |
 | 1.31 | `webcare init` and first-run steps in the skill | Test suite |
 | 1.32 | A yes at the terminal before checking real data | Test suite |
+| 1.33 | Stable report.json: `schema_version` and a published JSON Schema | Test suite validates real reports |
 
 ## In progress
 
@@ -44,12 +45,7 @@ Nothing at the moment.
 
 ## Planned, not started
 
-Decided with the owner on 23 November 2026: make the tool easy for beginners who use it
-through an AI assistant, without making it less thorough for specialists.
-
-1. **A stable report.json for others to build on.** A `schema_version` field, a published
-   JSON Schema, and a promise not to break the shape within a major version, so others
-   can build dashboards or a point-and-click interface on top of the tool.
+Nothing at the moment; the plan decided with the owner on 23 November 2026 is done (1.30–1.33).
 
 ## Waiting on a decision
 

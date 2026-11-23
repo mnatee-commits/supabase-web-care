@@ -92,6 +92,8 @@ TEXT = {
     },
 }
 MAX_ROWS_PER_CHECK = 100
+# report.json's shape; see schema/report.schema.json. Fields are only added within 1.x.
+SCHEMA_VERSION = "1.0"
 FIRST_STEPS = 3
 # Rules whose findings reach visitors who are not signed in; they come first within a severity.
 _VISITOR_WORDS = ("anon", "public", "realtime", "secret", "jwt", "key", "password", "view_runs_as_owner")
@@ -233,6 +235,7 @@ class Report:
     def to_dict(self) -> dict:
         return {
             "tool": "supabase-web-care",
+            "schema_version": SCHEMA_VERSION,
             "version": __version__,
             "generated_at": self.generated_at,
             "language": self.lang,
