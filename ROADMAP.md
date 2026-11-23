@@ -53,6 +53,15 @@ Nothing at the moment; the plan decided with the owner on 23 November 2026 is do
 1. **Unindexed foreign keys without the Management API.** The Performance Advisor
    (`--with-performance`) reports them, but a run over a direct connection alone does not
    (noted by the third review).
+2. **Ready for first outside users** (agreed with the owner on 23 November 2026; after the
+   checks against a real project through the Management API have passed):
+   a five-minute start in the README that begins with the file checks and needs no key;
+   sample reports in English and Thai from a made-up database; issue templates for a
+   problem and for a suggestion.
+3. **Declared extensions.** Let the target file say that pg_net is used on purpose, with a
+   reason: the finding stays in the report as info and no longer fails a security gate,
+   and returns to medium if schema `net` is served by the Data API (suggested by the
+   focused review of 23 November 2026).
 
 ## Waiting on a decision
 
