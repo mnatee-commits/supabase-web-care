@@ -172,6 +172,20 @@ def build_parser() -> argparse.ArgumentParser:
         + "; the rest is reported as NOT_RUN",
     )
     check.add_argument(
+        "--group", action="append", default=[], metavar="GROUP",
+        help="check only a group of areas: " + ", ".join(focus.GROUPS),
+    )
+    check.add_argument(
+        "--only", action="append", default=[], metavar="CHECK",
+        help="check only these, comma-separated or repeated: report rows such as table_writes, "
+        "or single catalog checks such as extension_net_callable",
+    )
+    check.add_argument(
+        "--fail-groups", default=None, metavar="GROUPS",
+        help="comma-separated groups whose results decide the exit code (default: all); "
+        "for example security, so health findings warn without failing CI",
+    )
+    check.add_argument(
         "--profile", choices=focus.PROFILES, default=None,
         help="quick: files only, nothing live; full: every optional --via-api check on",
     )
@@ -753,7 +767,18 @@ def cmd_check(args: argparse.Namespace) -> int:
     switched = _apply_target_settings(args)
     skip = set(args.skip)
     try:
-        plan = focus.Plan(focus.parse(args.focus), args.profile)
+        if args.only and (args.focus or args.group):
+            raise ValueError("--only names exact checks; use it without --focus or --group")
+        areas = tuple(dict.fromkeys(focus.parse(args.focus) + focus.parse_groups(args.group)))
+        areas = tuple(name for name in focus.AREAS if name in areas)
+        only = focus.parse_only(args.only, ["secrets", *TITLES])
+        fail_groups = None
+        if args.fail_groups is not None:
+            fail_groups = [name.strip() for name in args.fail_groups.split(",") if name.strip()]
+            unknown = sorted(set(fail_groups) - set(focus.GROUPS))
+            if unknown or not fail_groups:
+                raise ValueError(f"--fail-groups takes {', '.join(focus.GROUPS)}; got {args.fail_groups!r}")
+        plan = focus.Plan(areas, args.profile, only)
     except ValueError as error:
         print(f"refused: {error}", file=sys.stderr)
         return EXIT_REFUSED
@@ -877,7 +902,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         if written:
             print(f"report: {written[1]}")
             print(f"        {written[0]}")
-    return report.exit_code(args.fail_on)
+    return report.exit_code(args.fail_on, fail_groups)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

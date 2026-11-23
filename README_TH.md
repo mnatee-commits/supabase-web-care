@@ -1,4 +1,4 @@
-# Supabase Web Care v1.21
+# Supabase Web Care v1.22
 
 ชุดเครื่องมือและสกิลสำหรับดูแลเว็บที่ใช้ Supabase หรือ PostgreSQL แบบอ่านอย่างเดียว ใช้ตรวจ key ที่หลุดในโค้ด นโยบาย RLS สิทธิ์ของฟังก์ชัน และสิ่งที่ผู้ใช้ที่ไม่ล็อกอินอ่านได้ ข้อมูลในแถวของตารางจะไม่ถูกอ่านในทุกขั้นตอน
 
@@ -142,6 +142,10 @@ python -m webcare check --snapshot staging.json --target <ชื่อเป้�
 python -m webcare check --target staging --via-api --focus extensions
 python -m webcare check --target staging --via-api --focus functions,tables
 ```
+
+`--group security` หรือ `--group health` เลือกหลายด้านพร้อมกัน (security คือทุกด้านยกเว้น health) ส่วน `--only` ระบุการตรวจทีละข้อ เช่น แถว `table_writes` ของรายงาน หรือการตรวจย่อยใน catalog เช่น `extension_net_callable` ใช้ร่วมกับ `--focus` หรือ `--group` ไม่ได้
+
+`--fail-groups security` ให้เฉพาะผลด้านความปลอดภัยเป็นตัวตัดสินรหัสจบ ใน CI เรื่องสุขภาพ (backup เก่า งานตั้งเวลาล้ม) จะถูกรายงานแต่ไม่ทำให้ build ล้ม
 
 `--profile quick` ตรวจจากไฟล์อย่างเดียว ไม่ติดต่อที่ใด `--profile full` เปิดการตรวจเสริมของ `--via-api` ทั้งหมด การตรวจที่ไม่ได้ทำยังมีแถวในรายงาน ขึ้นเป็น `NOT_RUN` พร้อมเหตุผล และหัวรายงานบอกขอบเขต รายงานที่ตรวจบางส่วนจึงไม่ถูกอ่านเป็นว่าตรวจครบ การตรวจที่อยู่นอกขอบเขตไม่ทำให้รหัสจบเป็น 2
 

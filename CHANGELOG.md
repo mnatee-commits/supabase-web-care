@@ -3,6 +3,19 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.22.0
+- `--only` names exact checks: report rows (`table_writes`) or single catalog checks
+  (`extension_net_callable`); an optional check named this way is switched on. It cannot
+  be mixed with `--focus` or `--group`, so a run never means two things at once.
+- `--group security` and `--group health` name sets of areas.
+- `--fail-groups` chooses which groups decide the exit code; `--fail-groups security`
+  reports health findings without failing CI.
+- SECURITY.md now lists every way an optional GET endpoint can be asked for (its flag,
+  the target's `checks`, a focus, group or `--only` that names it, `--profile full`).
+  The second outside review noticed that the old wording promised only the flags.
+- From the design proposals in the second review: `--changed-since` and a parity check
+  are planned for file checks and a saved inventory; a database health module is next.
+
 ## 1.21.0
 - Focused runs: `--focus` with one or more areas (`secrets`, `functions`, `tables`,
   `storage`, `extensions`, `auth`, `advisors`, `health`) runs only their checks, and

@@ -251,6 +251,14 @@ python -m webcare check --target staging --via-api --focus extensions
 python -m webcare check --target staging --via-api --focus functions,tables
 ```
 
+`--group security` or `--group health` names a set of areas at once (security is every
+area except health). `--only` names exact checks instead: report rows such as
+`table_writes`, or single catalog checks such as `extension_net_callable`; it cannot be
+mixed with `--focus` or `--group`.
+
+`--fail-groups security` lets only security results decide the exit code, so in CI a
+health finding (an old backup, a failed job) is reported without failing the build.
+
 `--profile quick` checks files only and contacts nothing; `--profile full` switches every
 optional `--via-api` check on. Every check left out still has a row, marked `NOT_RUN`
 with the reason, and the report's header names the scope, so a focused report is never

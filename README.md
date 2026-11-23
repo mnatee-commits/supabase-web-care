@@ -66,7 +66,8 @@ against a real system is listed at the end of [docs/OFFLINE_VM.md](docs/OFFLINE_
 
 `--focus functions,tables` (or any of `secrets`, `storage`, `extensions`, `auth`,
 `advisors`, `health`) checks only those areas; `--profile quick` checks files only.
-What is left out is listed as `NOT_RUN`.
+`--only table_writes` names exact checks, and `--fail-groups security` keeps health
+findings from failing CI. What is left out is listed as `NOT_RUN`.
 
 `report.md` is written in English by default; pass `--lang th` (or set `WEBCARE_LANG=th`) for Thai.
 

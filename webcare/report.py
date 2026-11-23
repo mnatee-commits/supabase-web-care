@@ -10,6 +10,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Iterable, Optional
 
 from . import __version__
 from .manual import MANUAL_ITEMS
@@ -106,17 +107,24 @@ class Report:
             totals[finding.severity] += 1
         return totals
 
-    def exit_code(self, fail_on: str) -> int:
-        """0 clean, 1 findings at or above the threshold, 2 a requested check failed."""
+    def exit_code(self, fail_on: str, groups: Optional[Iterable[str]] = None) -> int:
+        """0 clean, 1 findings at or above the threshold, 2 a requested check failed.
+
+        With `groups`, only checks in those groups count (`--fail-groups`); the others
+        are still in the report.
+        """
+        from .focus import group_of
+
+        counted = [check for check in self.checks if groups is None or group_of(check.id) in set(groups)]
         incomplete = any(
             check.status == ERROR or (check.status == NOT_RUN and check.id in self.requested)
-            for check in self.checks
+            for check in counted
         )
         if incomplete:
             return 2
         if fail_on != "never" and any(
             severity_at_least(finding.severity, fail_on)
-            for check in self.checks
+            for check in counted
             for finding in check.findings
         ):
             return 1

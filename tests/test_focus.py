@@ -76,3 +76,47 @@ def test_a_focused_live_run_keeps_only_the_catalog_checks_of_its_area(pg, tmp_pa
     assert rules == {"extension_net_callable", "extension_vault_reachable", "extension_cron_reachable"}
     for left_out in ("rls_live", "functions_live", "table_writes", "secrets"):
         assert checks[left_out]["status"] == "NOT_RUN" and "focus: extensions" in checks[left_out]["reason"]
+
+
+def test_only_takes_report_rows_and_single_catalog_checks():
+    known = ["secrets", "extra_live", "table_writes", "advisors"]
+    plan = focus.Plan(only=focus.parse_only(["table_writes,extension_net_callable"], known))
+    assert plan.allowed() == {"table_writes", "extra_live"}
+    assert plan.catalog() == {"extension_net_callable"}
+    assert focus.Plan(only=frozenset({"extra_live"})).catalog() is None  # every catalog check
+    with pytest.raises(ValueError, match="unknown --only"):
+        focus.parse_only(["tabel_writes"], known)
+    args = argparse.Namespace(with_advisors=False, with_auth_config=False, with_backups=False, with_logs=False)
+    focus.Plan(only=frozenset({"advisors"})).prepare(args, set())
+    assert args.with_advisors and not args.with_logs
+
+
+def test_groups_name_sets_of_areas():
+    assert focus.parse_groups(["health"]) == ("health",)
+    assert "health" not in focus.parse_groups(["security"]) and "extensions" in focus.parse_groups(["security"])
+    assert focus.group_of("health_backups") == "health" and focus.group_of("table_writes") == "security"
+    with pytest.raises(ValueError):
+        focus.parse_groups(["speed"])
+
+
+def test_fail_groups_decide_the_exit_code():
+    from webcare.report import Report
+
+    checks = [CheckResult(id="table_writes", title="t", status="PASS"),
+              CheckResult(id="health_backups", title="t", status="FINDINGS",
+                          findings=[Finding("backups", "no_backup", "high", "project", "none")])]
+    report = Report(checks=checks, source="s", target="t")
+    assert report.exit_code("high") == 1
+    assert report.exit_code("high", ["security"]) == 0
+    assert report.exit_code("high", ["health"]) == 1
+
+
+def test_only_and_fail_groups_from_the_command_line(tmp_path):
+    out = tmp_path / "out"
+    code = main(["check", "--repo", str(FIXTURES), "--only", "secrets", "--fail-groups", "health",
+                 "--out-dir", str(out)])
+    assert code == 0  # whatever the scan found, only health findings could fail this run
+    report = json.loads((out / "report.json").read_text())
+    assert report["scope"] == "only: secrets"
+    assert main(["check", "--only", "secrets", "--focus", "tables", "--out-dir", str(out)]) == 2
+    assert main(["check", "--fail-groups", "speed", "--out-dir", str(out)]) == 2

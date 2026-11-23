@@ -47,17 +47,64 @@ AREAS: dict[str, Area] = {
     ),
 }
 PROFILES = ("quick", "full")
+# Wider names for sets of areas. Health findings say how the database is running;
+# everything else is about who may reach what.
+GROUPS: dict[str, tuple[str, ...]] = {
+    "security": tuple(name for name in AREAS if name != "health"),
+    "health": ("health",),
+}
+# Optional --via-api checks, by report row, for --only.
+OPTIONAL_BY_CHECK = {
+    "advisors": "with_advisors", "auth_config": "with_auth_config",
+    "health_backups": "with_backups", "health_logs": "with_logs",
+}
+
+
+def group_of(check_id: str) -> str:
+    """The group a report row belongs to, for --fail-groups."""
+    return "health" if check_id in AREAS["health"].checks else "security"
+
+
+def catalog_ids() -> set[str]:
+    return set().union(*(area.catalog for area in AREAS.values()))
 ALL_OPTIONAL = ("with_advisors", "with_auth_config", "with_backups", "with_logs")
 STATIC = ("rls_static", "functions_static")
 LIVE = ("rls_live", "storage_live", "extra_live", "functions_live", "storage_buckets",
         "table_writes", "health_cron", "advisors", "auth_config", "health_backups", "health_logs")
 
 
-def parse(values: Iterable[str]) -> tuple[str, ...]:
-    """Areas from repeated or comma-separated --focus values, in a stable order."""
+def _split(values: Iterable[str]) -> list[str]:
     names = []
     for value in values:
         names += [part.strip() for part in value.split(",") if part.strip()]
+    return names
+
+
+def parse_groups(values: Iterable[str]) -> tuple[str, ...]:
+    """Areas named by --group values."""
+    names = _split(values)
+    unknown = sorted(set(names) - set(GROUPS))
+    if unknown:
+        raise ValueError(f"unknown --group {', '.join(unknown)}; the groups are {', '.join(GROUPS)}")
+    return tuple(area for area in AREAS if any(area in GROUPS[name] for name in names))
+
+
+def parse_only(values: Iterable[str], report_ids: Iterable[str]) -> frozenset[str]:
+    """Check names for --only: report rows, or single catalog checks."""
+    names = set(_split(values))
+    known = set(report_ids) | catalog_ids()
+    unknown = sorted(names - known)
+    if unknown:
+        raise ValueError(
+            f"unknown --only check {', '.join(unknown)}; use a report row such as table_writes "
+            "or a catalog check such as extension_net_callable"
+        )
+    return frozenset(names)
+
+
+def parse(values: Iterable[str]) -> tuple[str, ...]:
+    """Areas from repeated or comma-separated --focus values, in a stable order."""
+    names = _split(values)
     unknown = sorted(set(names) - set(AREAS))
     if unknown:
         raise ValueError(f"unknown --focus area {', '.join(unknown)}; the areas are {', '.join(AREAS)}")
@@ -68,17 +115,24 @@ def parse(values: Iterable[str]) -> tuple[str, ...]:
 class Plan:
     areas: tuple[str, ...] = ()
     profile: Optional[str] = None
+    only: frozenset[str] = frozenset()
 
     @property
     def active(self) -> bool:
-        return bool(self.areas) or self.profile is not None
+        return bool(self.areas) or self.profile is not None or bool(self.only)
 
     def allowed(self) -> Optional[set[str]]:
+        if self.only:
+            rows = set(self.only) - catalog_ids()
+            return rows | ({"extra_live"} if self.only & catalog_ids() else set())
         if not self.areas:
             return None
         return set().union(*(AREAS[name].checks for name in self.areas))
 
     def catalog(self) -> Optional[set[str]]:
+        """Catalog checks to keep inside extra_live, or None for all of them."""
+        if self.only:
+            return None if "extra_live" in self.only else set(self.only) & catalog_ids()
         if not self.areas:
             return None
         return set().union(*(AREAS[name].catalog for name in self.areas))
@@ -91,6 +145,8 @@ class Plan:
             parts.append("ชุด full: เปิดการตรวจเสริมทั้งหมด" if lang == "th" else "profile full: every optional check on")
         if self.areas:
             parts.append(("เฉพาะด้าน " if lang == "th" else "focus: ") + ", ".join(self.areas))
+        if self.only:
+            parts.append(("เฉพาะการตรวจ " if lang == "th" else "only: ") + ", ".join(sorted(self.only)))
         return "; ".join(parts)
 
     def prepare(self, args, skip: set[str]) -> None:
@@ -112,6 +168,7 @@ class Plan:
         if not allowed & set(LIVE):
             skip.add("live")
         wanted = {flag for name in self.areas for flag in AREAS[name].optional}
+        wanted |= {flag for check_id, flag in OPTIONAL_BY_CHECK.items() if check_id in self.only}
         for flag in ALL_OPTIONAL:
             # An optional check outside the focus is not asked for, even if the target file or
             # a flag switched it on; one inside it is switched on.
