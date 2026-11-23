@@ -35,6 +35,43 @@ def test_a_quiet_database_passes():
     assert result.status == "PASS" and "no table row" in result.notes[-1]
 
 
+def test_the_statement_never_selects_the_text_of_a_statement():
+    sql = db_health.build_sql()
+    assert "pg_stat_statements" in sql and "queryid" in sql
+    assert not re.search(r"\bs\.query\b", sql) and "s.*" not in sql
+
+
+def test_connections_size_versions_and_slow_statements():
+    from datetime import date
+
+    parts = dict(
+        connections={"in_use": 55, "max": 60, "reserved": 3},
+        database_bytes=3 * (1 << 30),
+        largest_tables=[{"table_name": "public.big", "bytes": 2 * (1 << 30)}],
+        server_version_num=140012,
+        extension_updates=[{"name": "pg_net", "installed_version": "0.14.0", "default_version": "0.20.4"}],
+        statements=[{"query_id": "42", "calls": 500, "mean_ms": 2300.0, "total_ms": 1150000, "rows": 1},
+                    {"query_id": "43", "calls": 3, "mean_ms": 9000.0, "total_ms": 27000, "rows": 1},
+                    {"query_id": "44", "calls": 90000, "mean_ms": 4.0, "total_ms": 360000, "rows": 1}],
+    )
+    result = db_health.judge(CheckResult(id="db_health", title=db_health.TITLE), report(**parts), today=date(2026, 11, 23))
+    assert found(result) == {
+        ("connections_near_limit", "high", "database"),      # 55 of 57 usable
+        ("postgres_end_of_life", "medium", "database"),      # 14 ended on 2026-11-12
+        ("extension_update_available", "info", "extensions"),
+        ("slow_statement", "low", "query id 42"),            # slow and often; 43 ran too few times, 44 is fast
+    }
+    assert any("database size: 3.0 GB" in note and "public.big 2.0 GB" in note for note in result.notes)
+    soon = db_health.judge(CheckResult(id="db_health", title=db_health.TITLE),
+                           report(server_version_num=150010, connections={"in_use": 9, "max": 60, "reserved": 3}),
+                           today=date(2027, 8, 1))
+    assert found(soon) == {("postgres_end_of_life", "low", "database")}
+    assert any("connections in use: 9 of 57" in note for note in soon.notes)
+    calm = db_health.judge(CheckResult(id="db_health", title=db_health.TITLE), report(server_version_num=170011),
+                           today=date(2026, 11, 23))
+    assert calm.findings == [] and any("pg_stat_statements is not installed" in note for note in calm.notes)
+
+
 def test_each_part_is_judged_with_its_thresholds():
     result = judged(
         invalid_indexes=[{"index_name": "public.i", "table_name": "public.t", "bytes": 8192}],
@@ -76,3 +113,5 @@ def test_against_the_test_database(pg):
         result = db_health.run_on_connection(connection, "test database")
     assert result.status in ("PASS", "FINDINGS"), result.reason
     assert any("not visible" in note for note in result.notes)  # the audit role lacks pg_read_all_stats
+    assert any(note.startswith("database size:") for note in result.notes)
+    assert any(note.startswith("connections in use:") for note in result.notes)

@@ -3,6 +3,22 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.37.0
+The database health check (`db_health`) also looks at resources, in the same single
+read-only statement:
+- `connections_near_limit`: connections in use against `max_connections` less the reserved
+  ones (medium from 80%, high from 95%); below that the figure is a note.
+- `postgres_end_of_life`: the major version has left community support (medium) or does
+  within 180 days (low).
+- `extension_update_available` (info): extensions with a newer version on the server.
+- `slow_statement` (low): among the five statements that use the most time, those that
+  average a second or more over at least 20 calls, named by query id with counts and
+  timings only. The text of a statement is never read; the id is looked up in the dashboard.
+- The size of the database and its five largest tables are given as a note; the database
+  cannot see the plan's disk limit, so nothing is judged.
+
+The added statement ran read-only on a real Postgres 17 project before release.
+
 ## 1.36.0
 - New check `edge_functions`, from files only: the code under `supabase/functions/<name>/`
   and `verify_jwt` in `supabase/config.toml` (`--functions-dir` names another folder).

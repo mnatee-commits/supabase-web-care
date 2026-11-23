@@ -42,6 +42,7 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.34.1 | pg_net advice says when a REVOKE cannot work | Found on a real project |
 | 1.35 | Fixes from the fourth outside review: real-data question, Action inputs, In short order, report schema 1.1 | Tests run the Action's script |
 | 1.36 | Edge Functions read from files: verify_jwt, service role without a caller check, any-origin CORS | Run on one real function's code; no deployed function was compared |
+| 1.37 | Database health also covers connections, size, version support, extension updates and slow statements | The statement ran on a real project |
 
 ## In progress
 
