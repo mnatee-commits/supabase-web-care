@@ -3,6 +3,15 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.30.0
+- report.md opens with "In short": how many problems, the three to act on first, and
+  every check that did not run, with a reminder that no result certifies a safe site.
+  Ordered by severity; within one severity, findings that reach visitors who are not
+  signed in come first, and a target holding real data says so. report.json carries the
+  same under `summary`. Decided with the owner for beginners who use the tool through AI.
+- Thai lines for all 69 pgrls rules, so the Thai summary explains them too; a test fails
+  if pgrls's catalog gains a rule without one.
+
 ## 1.29.0
 - A GitHub Action (`action.yml`): `uses: mnatee-commits/supabase-web-care@<commit>` runs the
   file checks on a pull request in one step, with inputs for migrations, baseline,

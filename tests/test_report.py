@@ -12,7 +12,7 @@ def test_thai_report_explains_each_finding_in_thai_and_keeps_the_english_detail(
     ])]
     markdown = Report(checks=checks, source="s", target="t", lang="th").to_markdown()
     assert "security_invoker = true" in markdown and "anon may read this view" in markdown
-    assert "ผลของ pgrls" in markdown and "ส่วน tables เปลี่ยนไป" in markdown
+    assert "ตารางนี้ไม่ได้เปิด RLS" in markdown and "ส่วน tables เปลี่ยนไป" in markdown
     english = Report(checks=checks, source="s", target="t", lang="en").to_markdown()
     assert "ความหมาย" not in english and "| Severity | Rule | Location | Detail |" in english
     assert all(text.strip() for text in RULES.values())
@@ -33,3 +33,44 @@ def test_every_rule_in_the_code_has_a_thai_explanation():
     rules |= {f"{role}_{suffix}" for role in ("anon", "authenticated")
               for suffix in ("write_without_rls", "write_undeclared", "writes_not_declared")}
     assert sorted(rules - set(RULES) - {"high", "medium", "low", "info", "error", "warning"}) == []
+
+
+def test_every_pgrls_rule_has_a_thai_line():
+    import shutil
+    import subprocess
+
+    import pytest
+
+    from webcare.explain_th import PGRLS
+
+    executable = shutil.which("pgrls")
+    if executable is None:
+        pytest.skip("pgrls is not installed")
+    catalog = subprocess.run([executable, "explain"], capture_output=True, text=True, check=True).stdout
+    rules = {line.split()[0] for line in catalog.splitlines() if line[:3] in ("SEC", "PER", "HYG", "VIE")}
+    assert rules and sorted(rules - set(PGRLS)) == []
+
+
+def test_the_summary_puts_first_things_first_and_never_hides_what_did_not_run():
+    from webcare.model import CheckResult, Finding
+    from webcare.report import Report
+
+    checks = [
+        CheckResult(id="extra_live", title="t", status="FINDINGS", findings=[
+            Finding("live", "default_table_privileges", "medium", "public", "x"),
+            Finding("live", "view_runs_as_owner", "medium", "public.v", "y"),
+            Finding("live", "invalid_index", "low", "public.i", "z")]),
+        CheckResult(id="table_writes", title="t", status="FINDINGS", findings=[
+            Finding("table_writes", "anon_write_without_rls", "high", "public.t", "w")]),
+        CheckResult(id="advisors", title="t", status="NOT_RUN", reason="not asked for"),
+    ]
+    report = Report(checks=checks, source="s", target="t", real_data=True)
+    assert [f.rule for _, f in report.first_findings()] == [
+        "anon_write_without_rls", "view_runs_as_owner", "default_table_privileges"]
+    text = report.to_markdown()
+    assert text.index("## In short") < text.index("## Summary")
+    assert "1 of 3 checks did not run** (advisors)" in text and "every finding touches real people's data" in text
+    clean = Report(checks=[CheckResult(id="advisors", title="t", status="NOT_RUN")], source="s", target="t",
+                   lang="th").to_markdown()
+    assert "ไม่พบปัญหาในการตรวจที่ได้ทำ" in clean and "ยังไม่ได้ตรวจ 1 จาก 1 หัวข้อ" in clean
+    assert report.to_dict()["summary"]["first"][0]["rule"] == "anon_write_without_rls"

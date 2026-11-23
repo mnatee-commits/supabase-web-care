@@ -109,17 +109,96 @@ RULES: dict[str, str] = {
     "database_open_to_every_address": "ต่อฐานตรงได้จากทุก IP รหัสผ่านฐานเป็นด่านเดียว จำกัด IP ที่ต้องใช้",
 }
 
+# pgrls rules (pgrls 0.57.1, `pgrls explain`). Short: the English detail beside it has the specifics.
+PGRLS: dict[str, str] = {
+    "SEC001": "ตารางนี้ไม่ได้เปิด RLS ใครมีสิทธิ์ก็เห็นทุกแถว เปิด RLS แล้วเขียน policy",
+    "SEC002": "ไม่ได้ใส่ FORCE ROW LEVEL SECURITY เจ้าของตารางจึงข้าม RLS ได้ ทำให้ทดสอบ policy ผิดพลาดง่าย",
+    "SEC003": "policy ให้สิทธิ์ PUBLIC ซึ่งรวมทุก role รวมผู้ไม่ล็อกอิน ระบุ role ให้แคบลง",
+    "SEC004": "เงื่อนไขตรวจตัวตนกลับด้าน ทำให้ผู้ไม่ล็อกอินผ่านได้",
+    "SEC005": "เงื่อนไขของ policy ไม่อ้างคอลัมน์ใดของตาราง จึงไม่ได้กรองแถวจริง",
+    "SEC006": "policy สำหรับเขียนไม่มี WITH CHECK ผู้ใช้อาจเขียนแถวที่ไม่ใช่ของตัวเองได้",
+    "SEC007": "ทุก policy เป็นแบบ permissive ข้อใดข้อหนึ่งผ่านก็พอ ตรวจว่าไม่มีข้อที่กว้างเกินไป",
+    "SEC008": "policy ผ่านทุกแถว (USING true) ทุกคนที่มีสิทธิ์เห็นทั้งตาราง",
+    "SEC009": "เปิด RLS แล้วแต่ไม่มี policy ไม่มีใครเข้าถึงผ่าน API ได้ ถ้าตั้งใจให้เข้าผ่านฟังก์ชันอย่างเดียวถือว่าปกติ",
+    "SEC010": "policy ไม่ผ่านเลย (false) ไม่มีใครเข้าถึงได้",
+    "SEC011": "เงื่อนไขมี OR true ทำให้ผ่านทุกแถว",
+    "SEC012": "มีแต่ policy แบบ restrictive จึงปฏิเสธทุกคนโดยไม่แจ้ง",
+    "SEC013": "trigger บนตารางนี้อาจทำงานข้าม policy",
+    "SEC014": "ฟังก์ชัน SECURITY DEFINER ข้าม RLS ของผู้เรียก ตรวจด่านภายในฟังก์ชัน",
+    "SEC015": "ฟังก์ชัน SECURITY DEFINER อาจถูกหลอกด้วย object ปลอมใน pg_temp ตรึง search_path",
+    "SEC016": "role ที่มี BYPASSRLS ข้าม RLS ได้ทั้งหมด",
+    "SEC017": "ฟังก์ชัน LEAKPROOF ผ่านด่าน RLS ได้ ตรวจว่าจำเป็นจริง",
+    "SEC018": "policy เทียบกับ current_user หรือ session_user ซึ่งใน Supabase มักไม่ใช่ตัวผู้ใช้ ใช้ auth.uid()",
+    "SEC019": "policy เรียก current_setting() โดยไม่กันค่าว่าง อาจ error",
+    "SEC020": "WITH CHECK ผ่านทุกแถวแต่ USING ไม่ใช่ ผู้ใช้อาจเขียนแถวที่ตัวเองอ่านไม่ได้",
+    "SEC021": "policy เทียบตัวตนกับค่าคงที่ที่เขียนตายตัว",
+    "SEC022": "เปิด RLS แต่ไม่มี policy สำหรับเขียน ถ้าเว็บต้องเขียนตารางนี้จะเขียนไม่ได้",
+    "SEC023": "policy ใช้กับ role ที่ข้าม RLS อยู่แล้ว ไม่มีผล",
+    "SEC024": "current_setting() ใช้ชื่อพารามิเตอร์ที่ไม่ระบุกลุ่ม",
+    "SEC025": "policy อ้างตารางที่ปิด RLS",
+    "SEC026": "policy ใช้ LIKE หรือ regex กับข้อมูลตัวตน อาจถูกเลี่ยงได้",
+    "SEC027": "ตารางมีคอลัมน์บอกเจ้าของ แต่ไม่มี policy ใดกรองด้วยคอลัมน์นั้น",
+    "SEC028": "policy สำหรับเขียนผ่านทุกแถว (WITH CHECK true) ใครมีสิทธิ์ก็เขียนอะไรก็ได้",
+    "SEC029": "role นี้สลับไปเป็น role ที่ข้าม RLS ได้",
+    "SEC030": "policy กรองด้วยคอลัมน์ที่เป็นค่าว่างได้ แถวที่ค่าว่างอาจหลุด",
+    "SEC031": "policy แบบ restrictive ผ่านทุกแถว จึงไม่ได้จำกัดอะไร",
+    "SEC032": "มี policy แต่ไม่ได้เปิด RLS policy จึงไม่มีผล เปิด RLS",
+    "SEC033": "policy เชื่อ user_metadata ซึ่งผู้ใช้แก้เองได้ ใช้ app_metadata หรือตารางสิทธิ์แทน",
+    "SEC034": "policy ใช้ auth.email() ซึ่งผู้ใช้เปลี่ยนได้และสนตัวพิมพ์เล็กใหญ่",
+    "SEC035": "UNIQUE ไม่ได้รวมคอลัมน์แยกหน่วยงาน อาจรู้ได้ว่าหน่วยงานอื่นมีข้อมูลอะไร",
+    "SEC036": "policy อ้าง auth.users โดยไม่ผูกกับผู้เรียก",
+    "SEC037": "policy เทียบ auth.role() กับชื่อ role ที่ไม่มีอยู่จริง จึงปฏิเสธเงียบ ๆ",
+    "SEC038": "ผู้ไม่ล็อกอินอ่านแถวได้ทั้งหมด เพราะเงื่อนไขผ่านเสมอสำหรับเขา",
+    "SEC039": "policy สำหรับเขียนเปิดให้ผู้ไม่ล็อกอิน",
+    "SEC040": "WITH CHECK ไม่ได้จำกัดแถวแบบเดียวกับ USING ผู้ใช้อาจย้ายแถวไปเป็นของคนอื่น",
+    "SEC041": "ตารางลูกของ partition ข้าม RLS ของตารางแม่",
+    "SEC042": "ผู้ไม่ล็อกอินเรียกฟังก์ชัน SECURITY DEFINER ที่ข้าม RLS ได้",
+    "SEC043": "ตารางลูกแบบ inheritance ข้าม RLS ของตารางแม่",
+    "SEC044": "ค่าตั้งต้นให้สิทธิ์ตารางใหม่แก่ role สิทธิ์ต่ำโดยอัตโนมัติ",
+    "SEC045": "คอลัมน์ที่อ่อนไหวเปิดให้ role สิทธิ์ต่ำ",
+    "SEC046": "policy เรียกฟังก์ชัน IMMUTABLE ที่อ่านค่าของ session ผลอาจถูกแคชข้ามผู้ใช้",
+    "SEC047": "foreign key ไปยังตารางที่มี RLS อาจใช้เดาว่ามีข้อมูลของหน่วยงานอื่น",
+    "SEC048": "role สิทธิ์ต่ำเข้าถึงเจ้าของตารางที่ไม่ได้ FORCE RLS",
+    "SEC049": "ตารางที่ Data API เปิดอยู่ role สิทธิ์ต่ำอ่านได้ ตรวจว่า policy จำกัดพอ",
+    "SEC050": "policy ของ Storage ไม่ระบุ bucket มีผลกับทุก bucket",
+    "SEC051": "Realtime ส่งการเปลี่ยนแปลงของตารางที่ปิด RLS ออกไปโดยไม่กรอง",
+    "SEC052": "ตารางผู้ใช้ของระบบล็อกอินถูกเปิดผ่าน view ใน schema ของ API",
+    "SEC053": "foreign table ถูกเปิดใน schema ของ API ซึ่งมี RLS ไม่ได้",
+    "SEC054": "materialized view ถูกเปิดใน schema ของ API ซึ่งไม่ผ่าน RLS",
+    "SEC055": "policy ใช้รูปแบบผูกตัวตนแบบเงียบ ทั้งที่ schema เปลี่ยนไปใช้แบบแจ้ง error แล้ว",
+    "PERF001": "policy เรียก auth.uid() ทุกแถว ช้าเมื่อตารางใหญ่ ครอบด้วย (select auth.uid())",
+    "PERF002": "policy ใช้ฟังก์ชัน VOLATILE ช้าและคาดเดาผลยาก",
+    "PERF003": "คอลัมน์ที่ policy ใช้กรองไม่มี index ช้าเมื่อตารางใหญ่",
+    "PERF004": "policy ครอบคอลัมน์ด้วยฟังก์ชัน ทำให้ใช้ index ไม่ได้",
+    "PERF005": "ตารางที่มี RLS ถูกอ่านแบบสแกนทั้งตารางในระบบจริง",
+    "HYG001": "policy อ้างคอลัมน์ที่ไม่มีในตาราง",
+    "HYG002": "ชื่อ policy ดูเหมือนตั้งไว้ชั่วคราว",
+    "HYG003": "policy ซ้ำกับอีกข้อบนตารางเดียวกัน",
+    "HYG004": "policy นี้ยังไม่มีการทดสอบ",
+    "VIEW001": "view ข้าม RLS เพราะไม่ได้ตั้ง security_invoker",
+    "VIEW002": "view ไม่ได้ตั้งเป็น security barrier อาจหลุดข้อมูลผ่านฟังก์ชัน",
+    "VIEW003": "materialized view เก็บข้อมูลที่มี RLS ไว้ตอน refresh ผู้อ่านเห็นข้อมูลของคนอื่นได้",
+    "VIEW004": "view เรียกฟังก์ชัน SECURITY DEFINER ที่อ่านตารางที่มี RLS",
+}
+
 BY_SOURCE: dict[str, str] = {
     "pgrls": "ผลของ pgrls (ตรวจนโยบาย RLS) รายละเอียดเป็นภาษาอังกฤษจากเครื่องมือนั้น อ่านเทียบกับการออกแบบของระบบก่อนแก้",
     "advisor": "ผลตรวจของ Supabase เอง ลิงก์ในรายละเอียดอธิบายวิธีแก้",
 }
 
 
-def explain(finding: Finding) -> str:
-    """A Thai line for a finding, or "" when there is none."""
+def specific(finding: Finding) -> str:
+    """A Thai line written for this very rule, or "" when there is only a per-source line."""
     if finding.rule in RULES:
         return RULES[finding.rule]
+    if finding.source == "pgrls":
+        return PGRLS.get(finding.rule, "")
     if finding.rule.startswith("parity_"):
         return (f"ส่วน {finding.rule.removeprefix('parity_')} เปลี่ยนไปจากรายการที่บันทึกไว้ "
                 "ถ้าตั้งใจให้บันทึกรายการใหม่ ถ้าไม่ได้ตั้งใจให้ตรวจว่าใครเปลี่ยน")
-    return BY_SOURCE.get(finding.source, "")
+    return ""
+
+
+def explain(finding: Finding) -> str:
+    """A Thai line for a finding, or "" when there is none."""
+    return specific(finding) or BY_SOURCE.get(finding.source, "")

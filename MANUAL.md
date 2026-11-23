@@ -332,6 +332,7 @@ appear in reports, error messages or the process list.
 
 ## Reading the results
 
+- **Start with "In short" at the top of report.md.** It counts the problems, lists the three to act on first (by severity; within one severity, those that reach visitors who are not signed in come first) and names every check that did not run. A short page with no problem on it says nothing about the checks it names as not run. The same summary is in report.json under `summary`.
 - `NOT_RUN` and `ERROR` mean the answer is not known yet. They do not mean safe.
 - pgrls severities are general Postgres advice and must be read against the system's design. For example, a table with RLS enabled, no policies, and access only through functions gets SEC009 and SEC002 although that design is deliberate.
 - "RLS not enabled" (SEC001, SEC032) from a file check can be wrong when the set of files is not the full history, for example when the file that creates a table is present and the file that enables RLS is not. Always confirm against the database.

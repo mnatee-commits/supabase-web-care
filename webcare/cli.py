@@ -1029,7 +1029,14 @@ def cmd_check(args: argparse.Namespace) -> int:
         since = (f"ไฟล์ที่เปลี่ยนตั้งแต่ {args.changed_since} (ตรวจฐานเต็ม)" if args.lang == "th"
                  else f"files changed since {args.changed_since} (database checks in full)")
         scope = "; ".join(part for part in (scope, since) if part)
+    real_data = False
+    if args.target:
+        try:
+            real_data = get_target(Path(args.config), args.target).data == "real"
+        except Refusal:
+            real_data = False
     report = Report(checks=checks, source=source, target=target_text, requested=requested, lang=args.lang,
+                    real_data=real_data,
                     scope=scope)
     try:
         written = report.write(Path(args.out_dir))

@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from . import __version__
-from .explain_th import explain
+from .explain_th import explain, specific
 from .manual import MANUAL_ITEMS
-from .model import ERROR, FINDINGS, NOT_RUN, PASS, SEVERITIES, CheckResult, severity_at_least
+from .model import ERROR, FINDINGS, NOT_RUN, PASS, SEVERITIES, CheckResult, Finding, severity_at_least
 
 TITLES_TH = {
     "secrets": "key และรหัสผ่านที่ค้างอยู่ในไฟล์",
@@ -92,6 +92,14 @@ TEXT = {
     },
 }
 MAX_ROWS_PER_CHECK = 100
+FIRST_STEPS = 3
+# Rules whose findings reach visitors who are not signed in; they come first within a severity.
+_VISITOR_WORDS = ("anon", "public", "realtime", "secret", "jwt", "key", "password", "view_runs_as_owner")
+
+
+def _reaches_visitors(finding) -> bool:
+    return any(word in finding.rule for word in _VISITOR_WORDS)
+
 MAX_MESSAGE_CHARS = 280
 
 
@@ -106,6 +114,7 @@ class Report:
     )
     lang: str = DEFAULT_LANGUAGE  # language of report.md and of the manual items
     scope: str = ""  # a focused run's areas or profile; empty for a whole run
+    real_data: bool = False  # the target holds real data, so every finding touches it
 
     def counts(self, check: CheckResult) -> dict[str, int]:
         totals = {severity: 0 for severity in SEVERITIES}
@@ -136,6 +145,91 @@ class Report:
             return 1
         return 0
 
+    def first_findings(self, limit: int = FIRST_STEPS) -> list[tuple[CheckResult, Finding]]:
+        """The findings to act on first: by severity, and within one severity those that
+        reach visitors who are not signed in before the rest."""
+        ranked = [
+            (check, finding) for check in self.checks for finding in check.findings
+            if finding.severity != "info"
+        ]
+        ranked.sort(key=lambda pair: (
+            SEVERITIES.index(pair[1].severity),
+            0 if _reaches_visitors(pair[1]) else 1,
+            pair[0].id, pair[1].rule, pair[1].location,
+        ))
+        return ranked[:limit]
+
+    def not_checked(self) -> list[CheckResult]:
+        return [check for check in self.checks if check.status in (NOT_RUN, ERROR)]
+
+    def summary(self) -> dict:
+        totals = {severity: 0 for severity in SEVERITIES}
+        for check in self.checks:
+            for finding in check.findings:
+                totals[finding.severity] += 1
+        return {
+            "findings": totals,
+            "real_data": self.real_data,
+            "first": [
+                {"check": check.id, "rule": finding.rule, "severity": finding.severity,
+                 "location": finding.location}
+                for check, finding in self.first_findings()
+            ],
+            "not_checked": [
+                {"check": check.id, "status": check.status, "reason": check.reason}
+                for check in self.not_checked()
+            ],
+            "manual_items": len(MANUAL_ITEMS),
+        }
+
+    def summary_lines(self) -> list[str]:
+        thai = self.lang == "th"
+        totals = self.summary()["findings"]
+        lines = ["## สรุปสั้น" if thai else "## In short", ""]
+        actionable = totals["high"] + totals["medium"] + totals["low"]
+        if actionable:
+            lines.append(
+                (f"พบปัญหา {actionable} ข้อ: สูง {totals['high']} ปานกลาง {totals['medium']} ต่ำ {totals['low']}"
+                 if thai else
+                 f"{actionable} problems found: {totals['high']} high, {totals['medium']} medium, {totals['low']} low.")
+            )
+            if self.real_data:
+                lines.append("เป้าหมายนี้เก็บข้อมูลจริง ทุกข้อกระทบข้อมูลของคนจริง"
+                             if thai else "This target holds real data: every finding touches real people's data.")
+            lines += ["", "**ทำสิ่งเหล่านี้ก่อน**" if thai else "**Do these first**", ""]
+            severity_names = SEVERITY_TH if thai else SEVERITY_EN
+            for number, (check, finding) in enumerate(self.first_findings(), start=1):
+                what = (specific(finding) if thai else "") or _shorten(finding.message)
+                lines.append(
+                    f"{number}. **{severity_names[finding.severity]}** · {finding.location} · {what} "
+                    f"({_title(check, self.lang)})"
+                )
+            more = actionable - len(self.first_findings())
+            if more > 0:
+                lines.append("")
+                lines.append(f"อีก {more} ข้ออยู่ในรายละเอียดด้านล่าง" if thai
+                             else f"{more} more below, in the detail of each check.")
+        else:
+            lines.append("ไม่พบปัญหาในการตรวจที่ได้ทำ" if thai else "No problem found by the checks that ran.")
+        skipped = self.not_checked()
+        lines.append("")
+        if skipped:
+            names = ", ".join(check.id for check in skipped)
+            lines.append(
+                (f"⚠️ **ยังไม่ได้ตรวจ {len(skipped)} จาก {len(self.checks)} หัวข้อ** ({names}) "
+                 "รายงานนี้ไม่ได้บอกอะไรเกี่ยวกับหัวข้อเหล่านั้น เหตุผลอยู่ในรายละเอียดของแต่ละหัวข้อ")
+                if thai else
+                (f"⚠️ **{len(skipped)} of {len(self.checks)} checks did not run** ({names}). This report says "
+                 "nothing about them; each one's reason is in its detail below.")
+            )
+        lines.append(
+            (f"มีอีก {len(MANUAL_ITEMS)} ข้อที่ต้องตรวจด้วยมือ (ท้ายรายงาน) ผลนี้ไม่ได้รับรองว่าเว็บปลอดภัย")
+            if thai else
+            (f"{len(MANUAL_ITEMS)} items need a manual check (end of the report). No result here certifies "
+             "that the site is safe.")
+        )
+        return lines + [""]
+
     def to_dict(self) -> dict:
         return {
             "tool": "supabase-web-care",
@@ -145,6 +239,7 @@ class Report:
             "source": self.source,
             "target": self.target,
             "scope": self.scope or None,
+            "summary": self.summary(),
             "checks": [check.to_dict() for check in self.checks],
             "manual": [
                 {"id": item.id, "status": NOT_RUN, "title": item.title(self.lang), "how": item.how(self.lang)}
@@ -168,6 +263,7 @@ class Report:
             f"- {text['target']}: {self.target}",
             *([f"- {text['scope']}: {self.scope}"] if self.scope else []),
             "",
+            *self.summary_lines(),
             text["summary"],
             "",
             text["summary_head"],
