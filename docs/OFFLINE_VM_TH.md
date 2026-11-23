@@ -83,7 +83,7 @@ python -m webcare check --target <ชื่อเป้าหมาย> --via-ap
 unset WEBCARE_ACCESS_TOKEN
 ```
 
-เครื่องมือส่งคำสั่ง SELECT ไม่เกิน 6 ครั้งไปที่ช่องทางอ่านอย่างเดียวของโปรเจกต์ ถ้าได้ HTTP 403 แปลว่า token ไม่มีสิทธิ์ `database_read` ของโปรเจกต์นั้น เพิกถอน token เมื่อเสร็จ
+เครื่องมือส่งคำสั่ง SELECT ไม่เกิน 7 ครั้งไปที่ช่องทางอ่านอย่างเดียวของโปรเจกต์ ถ้าได้ HTTP 403 แปลว่า token ไม่มีสิทธิ์ `database_read` ของโปรเจกต์นั้น เพิกถอน token เมื่อเสร็จ
 
 **ทางที่ 2: ผู้ดูแลรันคำสั่งเองแล้วส่งไฟล์**
 
@@ -150,5 +150,6 @@ alter role webcare_auditor nologin;      -- ปิด login เมื่อต�
 | ตารางที่ role ของ API เขียนได้ (`table_writes`) | คำสั่งรันบนโปรเจกต์ staging ของผู้เขียน (Postgres 17.11) ผ่าน Supabase connector ด้วย role `postgres` ได้ `anon` เขียนได้ 9 ตาราง `authenticated` 22 ตาราง ทุกตารางเปิด RLS ตรงกับการอ่านสิทธิ์แยกอีกครั้ง ยังไม่ได้รันผ่าน `--via-api` ด้วย `supabase_read_only_user` | รัน `check --via-api` แล้วเทียบกับสิทธิ์ตารางในหน้า dashboard |
 | ผลแบบ SARIF (`--sarif`) | ตรวจโครงสร้างตาม SARIF 2.1.0 ด้วยชุดทดสอบเท่านั้น ยังไม่เคยอัปโหลดเข้า GitHub code scanning | ทำตามหัวข้อ SARIF ใน `docs/CI_TH.md` กับ repository สาธารณะ |
 | schema ของ extension (`extension_net_callable`, `extension_vault_reachable`, `extension_cron_reachable`) | รันบนโปรเจกต์ staging ของผู้เขียน (Postgres 17.11) ผ่าน Supabase connector: `anon` และ `authenticated` เรียกฟังก์ชันของ pg_net ได้ครบ 12 ตัว ส่วน Vault และ pg_cron ปิดอยู่ ยังไม่ได้รันผ่าน `--via-api` ด้วย `supabase_read_only_user` | รัน `check --via-api` |
+| สุขภาพฐาน (`db_health`) และ Performance Advisor (`--with-performance`) | คำสั่งตรวจสุขภาพรันบนโปรเจกต์ staging ของผู้เขียน (Postgres 17.11) ผ่าน Supabase connector: เห็นทุกเซสชัน ไม่มีอะไรต้องรายงาน ทาง `--via-api` role `supabase_read_only_user` มี `pg_read_all_stats` (ตรวจบนโปรเจกต์เดียวกัน) จึงควรเห็นเซสชันเช่นกัน แต่ยังไม่ได้รันทางนั้น ยังไม่เคยเรียก Performance Advisor กับโปรเจกต์จริง | รัน `check --via-api --with-performance` |
 | Postgres เวอร์ชันอื่นนอกจาก 16 | ชุดทดสอบของเวอร์ชัน 1.1 ผ่านบน Postgres 17.12 บน VM (22 พ.ย. 2569) ส่วนการตรวจที่เพิ่มใน 1.2 ทดสอบบน 16 เท่านั้น | รัน `python -m pytest tests` ซ้ำบน VM |
 | การตรวจฟังก์ชันที่เพิ่มในเวอร์ชัน 1.2 กับ Supabase จริง | ยังไม่ทดสอบ ทดสอบกับ Postgres 16 ในเครื่อง และลองอ่านไฟล์ migration ของ ผู้เขียน 14 ไฟล์ (พบไฟล์และฟังก์ชันที่เป็นต้นเหตุของปัญหาที่กำลังแก้อยู่ในตอนนั้น) | รันขั้นที่ 5 กับ staging แล้วเทียบจำนวนฟังก์ชันที่ผู้ไม่ล็อกอินเรียกได้กับผลของ Security Advisor ข้อ 0028 |

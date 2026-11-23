@@ -183,6 +183,15 @@ def backup_list(target: Target, owner_approved: bool, token_env: str = DEFAULT_T
 
 def advisors_security(target: Target, owner_approved: bool, token_env: str = DEFAULT_TOKEN_ENV, api_base: str = ""):
     """GET the project's security advisors (Supabase's own lints)."""
+    return _advisors("security", target, owner_approved, token_env, api_base)
+
+
+def advisors_performance(target: Target, owner_approved: bool, token_env: str = DEFAULT_TOKEN_ENV, api_base: str = ""):
+    """GET the project's performance advisors. Supabase marks this endpoint experimental."""
+    return _advisors("performance", target, owner_approved, token_env, api_base)
+
+
+def _advisors(kind: str, target: Target, owner_approved: bool, token_env: str, api_base: str):
     target.ensure_allowed(owner_approved)
     if not target.project_ref:
         raise Refusal(
@@ -192,7 +201,7 @@ def advisors_security(target: Target, owner_approved: bool, token_env: str = DEF
     check_token(token, token_env)
     base = endpoint(target.project_ref, api_base).removesuffix("/database/query/read-only")
     request = urllib.request.Request(
-        f"{base}/advisors/security",
+        f"{base}/advisors/{kind}",
         method="GET",
         headers={
             "Authorization": f"Bearer {token}",
@@ -201,7 +210,7 @@ def advisors_security(target: Target, owner_approved: bool, token_env: str = DEF
         },
     )
     return _send(
-        request, token, "the security advisors endpoint",
+        request, token, f"the {kind} advisors endpoint",
         "the access token may not read this project's advisors; a fine-grained token "
         "needs the advisors_read permission for this project",
     )

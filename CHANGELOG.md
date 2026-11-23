@@ -3,6 +3,19 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.23.0
+- Database health (`db_health`), on a connection and `--via-api`: invalid indexes, table
+  bloat, transaction-ID age of tables and the database, sessions idle in a transaction,
+  lock waits, and sequences near their limit. One SELECT over statistics; no table row, no
+  `pg_stats`, no query text, no application name. Over a direct connection the audit role
+  cannot see other roles' sessions, and the report says so instead of passing them.
+  Unreadable sequences are counted, not estimated.
+- `--with-performance` reads Supabase's Performance Advisor (experimental on Supabase's
+  side), one step lower in severity than security lints. `checks = ["performance"]` in the
+  target file and `--focus health` switch it on.
+- Both are in the `health` group. Designed from the second outside review's proposal,
+  minus the two checks the Performance Advisor already makes. Ran on a real project.
+
 ## 1.22.0
 - `--only` names exact checks: report rows (`table_writes`) or single catalog checks
   (`extension_net_callable`); an optional check named this way is switched on. It cannot

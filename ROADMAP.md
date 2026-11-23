@@ -27,6 +27,7 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.20 | Extension schemas the API roles may reach (pg_net, Vault, pg_cron) | Yes: found the pg_net grant on a real project |
 | 1.21 | Focused runs (`--focus`, `--profile`) | Test suite, including a focused run against the test database |
 | 1.22 | `--only`, `--group`, `--fail-groups` | Test suite |
+| 1.23 | Database health (`db_health`) and Supabase's Performance Advisor (`--with-performance`) | The health statement ran on a real project; the Performance Advisor answer has not been read yet |
 
 ## In progress
 
@@ -34,20 +35,16 @@ Nothing at the moment.
 
 ## Planned, not started
 
-1. **Database health** (next): invalid indexes, table bloat and transaction-ID age,
-   sessions left idle in a transaction, sequences close to their limit; and Supabase's
-   Performance Advisor read like `--with-advisors`, if the Management API serves it.
-   From the second review's design, checked against a real project before release.
-2. **Realtime.** Report tables published through `supabase_realtime` that have RLS
+1. **Realtime.** Report tables published through `supabase_realtime` that have RLS
    off, and check the policies on `realtime.messages` (suggested by the second review).
-3. **Exposed schemas read from the database.** Take the schemas the Data API serves
+2. **Exposed schemas read from the database.** Take the schemas the Data API serves
    from the `authenticator` role's `pgrst.db_schemas` setting instead of assuming
    `public`, and report views there without `security_invoker`.
-4. **Storage per bucket.** Judge `storage.objects` policies bucket by bucket.
-5. **Platform settings** such as SSL enforcement and network restrictions. The
+3. **Storage per bucket.** Judge `storage.objects` policies bucket by bucket.
+4. **Platform settings** such as SSL enforcement and network restrictions. The
    Management API endpoints for these have not been checked yet.
-6. **Thai text for each finding's detail.** Headings are translated already.
-7. **A GitHub Action (`action.yml`) and a pre-commit hook**, so a site's repository can
+5. **Thai text for each finding's detail.** Headings are translated already.
+6. **A GitHub Action (`action.yml`) and a pre-commit hook**, so a site's repository can
    run the file checks in one line.
    With them, `--changed-since <ref>` for the file checks only (a database can change
    without a commit, so live checks are never narrowed by a diff), and a parity check
@@ -55,7 +52,7 @@ Nothing at the moment.
 
 ## Waiting on a decision
 
-8. **Probing as a signed-in test user.** Policies that exist but restrict too
+7. **Probing as a signed-in test user.** Policies that exist but restrict too
    little are a common cause of leaks, and only a signed-in request shows them.
    Signing in writes session rows, and may write an application's own audit
    rows, so this needs a design that the owner of each project accepts. Staging

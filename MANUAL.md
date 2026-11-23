@@ -137,8 +137,9 @@ python -m webcare check --target <target name> --via-api --skip secrets --skip s
 unset WEBCARE_ACCESS_TOKEN
 ```
 
-- The tool sends at most six requests: the snapshot statement once, up to two
-  statements for Storage, one for table privileges, and up to two for scheduled jobs. Each is a single
+- The tool sends at most seven requests: the snapshot statement once, up to two
+  statements for Storage, one for table privileges, one for database health, and up to
+  two for scheduled jobs. Each is a single
   SELECT built by the tool, sent to the project's read-only query endpoint
   (`/database/query/read-only`), which Supabase runs as
   `supabase_read_only_user`. Writes are therefore refused on Supabase's side
@@ -194,6 +195,8 @@ unset WEBCARE_ACCESS_TOKEN
   moment, so run it only on a machine you trust. Supabase documents the
   `auth_config_read` permission for this.
 - **Tables the API roles may write to (`table_writes`)** runs on this route and over a direct connection. One SELECT asks Postgres which tables and views `anon` and `authenticated` may INSERT, UPDATE or DELETE, counting privileges given to `PUBLIC`, to roles they belong to, and on single columns, and whether RLS is on. A write privilege on a table with RLS off is reported at once (high for `anon`, medium for `authenticated`). Declare the writes the site needs in `expected_table_writes`, for example `{ anon = ["public.feedback:insert"], authenticated = ["public.notes", "public.profiles:update"] }`; every other write privilege is then reported per table (medium for `anon`, low for `authenticated`). Without a declaration each role gets one finding that counts and names its writable tables. TRUNCATE ignores RLS and is noted separately. Privileges only; no row is read.
+- **Database health (`db_health`)** runs on this route and over a direct connection, with no flag. One SELECT over system statistics reports indexes left invalid by a failed `CREATE INDEX CONCURRENTLY` (medium), tables with at least 10,000 dead rows making up a fifth of the table (medium; high from 100,000 and half), tables or the database whose oldest unfrozen transaction ID is 500 million transactions old (medium; high from 1.2 billion), sessions idle inside a transaction for 5 minutes (medium; high from 30 minutes or when aborted), sessions waiting on a lock for a minute (medium), and sequences that have used 75% of their range (medium; high from 90%). It reads no table row, no `pg_stats` (its sample values are table data), no query text and no application name. The audit role cannot see other roles' sessions, so over a direct connection that part is reported as not checked; `--via-api` sees them. A sequence the connected role may not read is counted, never estimated.
+- **Supabase's Performance Advisor (`advisors_performance`)** runs only with `--with-performance`: one GET, read like the security advisors. It reports unindexed foreign keys, RLS policies that call `auth.uid()` once per row, unused and duplicate indexes and more. Performance lints rank one step lower than security ones (ERROR medium, WARN low). Supabase marks the endpoint experimental.
 - **Optional checks can be switched on in the target file.** Add `checks = ["advisors", "auth_config", "backups", "logs"]` and `lang = "th"` to a target in `webcare.toml`, and one short command runs them all. Flags on the command line still win, and the report says which checks the file switched on.
 - **The token is read from `WEBCARE_ACCESS_TOKEN`**, not from
   `SUPABASE_ACCESS_TOKEN`. That second name is what the Supabase CLI reads,
@@ -244,7 +247,7 @@ python -m webcare check --snapshot staging.json --target <target name> --skip se
 | `extensions` | pg_net, Vault and pg_cron reachable by the API roles |
 | `auth` | sign-in settings (switches `--with-auth-config` on) |
 | `advisors` | Supabase's own security lints (switches `--with-advisors` on) |
-| `health` | scheduled jobs, backups and the log summary (switches `--with-backups` and `--with-logs` on) |
+| `health` | database health, scheduled jobs, backups, the log summary and Supabase's Performance Advisor (switches `--with-backups`, `--with-logs` and `--with-performance` on) |
 
 ```bash
 python -m webcare check --target staging --via-api --focus extensions

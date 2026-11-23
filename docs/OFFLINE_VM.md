@@ -109,7 +109,7 @@ python -m webcare check --target <target name> --via-api --skip secrets --skip s
 unset WEBCARE_ACCESS_TOKEN
 ```
 
-The tool sends up to six single SELECT statements to the project's read-only
+The tool sends up to seven single SELECT statements to the project's read-only
 endpoint. HTTP 403 means the token lacks Database Read for that project.
 Revoke the token when you are done.
 
@@ -191,4 +191,5 @@ synthetic data. Dates are 22 November 2026 unless stated.
 | Tables the API roles may write to (`table_writes`) | The statement ran on the author's staging project (Postgres 17.11) through the Supabase connector, as `postgres`: `anon` could write to 9 tables and `authenticated` to 22, all with RLS on, matching a separate read of the same grants. Not yet run through `--via-api` as `supabase_read_only_user`. | Run `check --via-api` and compare with the table privileges shown in the dashboard |
 | SARIF output (`--sarif`) | Built and checked against the SARIF 2.1.0 structure by the test suite only; not yet uploaded to GitHub code scanning. | Follow the SARIF section of `docs/CI.md` in a public repository |
 | Extension schemas (`extension_net_callable`, `extension_vault_reachable`, `extension_cron_reachable`) | Ran on the author's staging project (Postgres 17.11) through the Supabase connector: `anon` and `authenticated` could each call all 12 pg_net functions; Vault and pg_cron were closed to both. Not yet run through `--via-api` as `supabase_read_only_user`. | Run `check --via-api` |
+| Database health (`db_health`) and the Performance Advisor (`--with-performance`) | The health statement ran on the author's staging project (Postgres 17.11) through the Supabase connector: every session visible, nothing to report. Through `--via-api`, `supabase_read_only_user` holds `pg_read_all_stats` (checked on the same project), so it should see sessions too; not yet run that way. The Performance Advisor endpoint has not been called against a real project. | Run `check --via-api --with-performance` |
 | Postgres versions other than 16 | The 1.1 test suite passed on Postgres 17.12 on the VM. Checks added later were tested on 16, and in CI on 16. | Run `python -m pytest tests` again on the VM |

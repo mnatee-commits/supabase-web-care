@@ -27,6 +27,8 @@ TITLES_TH = {
     "storage_buckets": "bucket ของ Storage: เปิดสาธารณะหรือไม่ และใครอัปโหลดได้",
     "table_writes": "ตารางที่ role ของ API เขียนได้",
     "advisors": "ผลตรวจความปลอดภัยของ Supabase เอง (Security Advisor)",
+    "advisors_performance": "ผลตรวจประสิทธิภาพของ Supabase เอง (Performance Advisor)",
+    "db_health": "สุขภาพฐาน: index เสีย ตารางบวม อายุธุรกรรม เซสชันค้าง sequence ใกล้เต็ม",
     "auth_config": "การตั้งค่าการล็อกอิน (Supabase Auth)",
     "health_cron": "งานตั้งเวลา (pg_cron) ที่ล้มหรือหยุดรัน",
     "health_backups": "backup ของฐานข้อมูลที่ Supabase เก็บไว้",

@@ -8,7 +8,7 @@ import pytest
 from test_snapshot import make_snapshot
 from urllib.parse import parse_qs, urlsplit
 
-from webcare import api_snapshot, auth_config, health, live, logs, snapshot, storage_buckets, table_writes
+from webcare import api_snapshot, auth_config, db_health, health, live, logs, snapshot, storage_buckets, table_writes
 from webcare.cli import main
 from webcare.model import Refusal
 from webcare.targets import Target, get_target
@@ -49,6 +49,12 @@ class FakeManagementApi(BaseHTTPRequestHandler):
         elif f"'{storage_buckets.FORMAT}'" in query:
             answer = [{"storage": {"format": storage_buckets.FORMAT, "taken_at": "2026-01-02T00:00:00Z",
                                    "buckets": type(self).buckets, "unscoped_policies": []}}]
+        elif f"'{db_health.FORMAT}'" in query:
+            answer = [{"db_health": {"format": db_health.FORMAT, "taken_at": "2026-01-02T00:00:00Z",
+                                     "sees_other_sessions": True, "database_xid_age": 1000,
+                                     "invalid_indexes": [], "bloat": [], "xid_age": [],
+                                     "idle_in_transaction": [], "lock_waits": [], "sequences": [],
+                                     "sequences_unreadable": 0}}]
         elif f"'{table_writes.FORMAT}'" in query:
             answer = [{"table_writes": {"format": table_writes.FORMAT, "taken_at": "2026-01-02T00:00:00Z",
                                         "roles": ["anon", "authenticated"], "tables": []}}]
@@ -115,6 +121,16 @@ class FakeManagementApi(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"result": type(self).log_rows} if status == 200 else {"message": "no"}).encode())
+            return
+        if self.path == f"/v1/projects/{REF}/advisors/performance":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            lint = {"name": "unindexed_foreign_keys", "level": "INFO", "title": "Unindexed foreign keys",
+                    "description": "x", "metadata": {"schema": "public", "name": "orders"}}
+            slow = {"name": "auth_rls_initplan", "level": "WARN", "title": "Auth RLS Initialization Plan",
+                    "description": "y", "metadata": {"schema": "public", "name": "notes"}}
+            self.wfile.write(json.dumps({"lints": [lint, slow]}).encode())
             return
         if self.path == f"/v1/projects/{REF}/advisors/security":
             status = 403 if type(self).mode == "advisors_403" else 200
@@ -284,8 +300,9 @@ def test_check_via_api_end_to_end(api, tmp_path, capsys, monkeypatch):
     assert "Management API" in checks["health_cron"]["evidence"]
     assert checks["storage_buckets"]["status"] == "PASS"
     assert checks["table_writes"]["status"] == "PASS"
-    # the snapshot, a probe and a query each for Storage and pg_cron, and the table privileges
-    assert [(method, path) for method, path, _, _ in api.seen] == [("POST", PATH)] * 6
+    assert checks["db_health"]["status"] == "PASS"
+    # the snapshot, a probe and a query each for Storage and pg_cron, table privileges, database health
+    assert [(method, path) for method, path, _, _ in api.seen] == [("POST", PATH)] * 7
     for _, _, _, body in api.seen:
         live.assert_single_select(json.loads(body)["query"])
 
@@ -294,7 +311,7 @@ def test_check_via_api_end_to_end(api, tmp_path, capsys, monkeypatch):
     code, checks, text = run_cli(tmp_path, capsys, "--via-api", "--target", "staging", "--config", str(config))
     assert checks["health_cron"]["status"] == "NOT_RUN" and "not installed" in checks["health_cron"]["reason"]
     assert checks["storage_buckets"]["status"] == "NOT_RUN"
-    assert len(api.seen) == 4 and code == 1  # probes and table privileges only; a missing pg_cron or Storage is not a failure
+    assert len(api.seen) == 5 and code == 1  # probes, table privileges and health only; a missing pg_cron or Storage is not a failure
     api.probe = dict(api.probe, installed=True)
 
     api.mode = "403"
@@ -460,3 +477,19 @@ def test_a_refused_api_run_gives_the_real_reason_for_every_check_asked_for(tmp_p
         assert checks[check_id]["status"] == "NOT_RUN"
         assert "not asked for" not in checks[check_id]["reason"]
         assert api_snapshot.DEFAULT_TOKEN_ENV in checks[check_id]["reason"], checks[check_id]["reason"]
+
+
+def test_performance_advisors_are_read_only_when_asked(api, tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("WEBCARE_DATABASE_URL", raising=False)
+    config = tmp_path / "webcare.toml"
+    config.write_text(f'[[target]]\nname = "staging"\nenv = "staging"\ndata = "synthetic"\nproject_ref = "{REF}"\n')
+    code, checks, _ = run_cli(tmp_path, capsys, "--via-api", "--target", "staging", "--config", str(config))
+    assert checks["advisors_performance"]["status"] == "NOT_RUN"
+    assert "--with-performance" in checks["advisors_performance"]["reason"]
+    api.seen.clear()
+    code, checks, _ = run_cli(tmp_path, capsys, "--via-api", "--with-performance", "--target", "staging",
+                              "--config", str(config))
+    assert [path for method, path, _, _ in api.seen if method == "GET"] == [f"/v1/projects/{REF}/advisors/performance"]
+    found = {(f["rule"], f["severity"]) for f in checks["advisors_performance"]["findings"]}
+    assert found == {("unindexed_foreign_keys", "info"), ("auth_rls_initplan", "low")}
+    assert "experimental" in " ".join(checks["advisors_performance"]["notes"])

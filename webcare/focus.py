@@ -42,8 +42,8 @@ AREAS: dict[str, Area] = {
     "auth": Area(frozenset({"auth_config"}), optional=("with_auth_config",)),
     "advisors": Area(frozenset({"advisors"}), optional=("with_advisors",)),
     "health": Area(
-        frozenset({"health_cron", "health_backups", "health_logs"}),
-        optional=("with_backups", "with_logs"),
+        frozenset({"health_cron", "health_backups", "health_logs", "db_health", "advisors_performance"}),
+        optional=("with_backups", "with_logs", "with_performance"),
     ),
 }
 PROFILES = ("quick", "full")
@@ -57,6 +57,7 @@ GROUPS: dict[str, tuple[str, ...]] = {
 OPTIONAL_BY_CHECK = {
     "advisors": "with_advisors", "auth_config": "with_auth_config",
     "health_backups": "with_backups", "health_logs": "with_logs",
+    "advisors_performance": "with_performance",
 }
 
 
@@ -67,10 +68,11 @@ def group_of(check_id: str) -> str:
 
 def catalog_ids() -> set[str]:
     return set().union(*(area.catalog for area in AREAS.values()))
-ALL_OPTIONAL = ("with_advisors", "with_auth_config", "with_backups", "with_logs")
+ALL_OPTIONAL = ("with_advisors", "with_auth_config", "with_backups", "with_logs", "with_performance")
 STATIC = ("rls_static", "functions_static")
 LIVE = ("rls_live", "storage_live", "extra_live", "functions_live", "storage_buckets",
-        "table_writes", "health_cron", "advisors", "auth_config", "health_backups", "health_logs")
+        "table_writes", "health_cron", "advisors", "auth_config", "health_backups", "health_logs",
+        "db_health", "advisors_performance")
 
 
 def _split(values: Iterable[str]) -> list[str]:

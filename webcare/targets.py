@@ -26,7 +26,7 @@ DEFAULT_CONFIG_NAME = "webcare.toml"
 APPROVAL_FLAG = "--owner-approved"
 _PROJECT_REF = re.compile(r"^[a-z]{20}$")
 # Optional checks a target may switch on in webcare.toml, instead of a --with-... flag each.
-OPTIONAL_CHECKS = ("advisors", "auth_config", "backups", "logs")
+OPTIONAL_CHECKS = ("advisors", "auth_config", "backups", "logs", "performance")
 REPORT_LANGUAGES = ("en", "th")
 TABLE_WRITE_ROLES = ("anon", "authenticated")
 TABLE_WRITE_COMMANDS = ("insert", "update", "delete")

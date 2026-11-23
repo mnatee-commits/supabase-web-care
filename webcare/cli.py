@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from . import (
-    __version__, advisors, anon_probe, api_snapshot, auth_config, backups, baseline, functions_static, health, inventory, live, logs, pgrls_runner, secret_scan,
+    __version__, advisors, anon_probe, api_snapshot, auth_config, backups, baseline, db_health, functions_static, health, inventory, live, logs, pgrls_runner, secret_scan,
     focus, sarif, snapshot, storage_buckets, table_writes,
 )
 from .model import ERROR, NOT_RUN, CheckResult, Refusal, severity_at_least
@@ -48,6 +48,8 @@ TITLES = {
     "health_cron": health.TITLE,
     "health_backups": backups.TITLE,
     "health_logs": logs.TITLE,
+    "db_health": db_health.TITLE,
+    "advisors_performance": advisors.PERFORMANCE_TITLE,
     "anon_probe": "What an anonymous visitor can read",
 }
 
@@ -145,6 +147,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--with-advisors", action="store_true",
         help="with --via-api, also read Supabase's own security lints (one GET; the token then "
         "also needs advisors_read)",
+    )
+    check.add_argument(
+        "--with-performance", action="store_true",
+        help="with --via-api, also read Supabase's Performance Advisor (one GET; experimental on "
+        "Supabase's side; the token then also needs advisors_read)",
     )
     check.add_argument(
         "--with-auth-config", action="store_true",
@@ -447,7 +454,7 @@ def _snapshot_checks(
     except Refusal as refusal:
         refused_ids = ["extra_live", "functions_live", "health_cron", "anon_probe"]
         if via_api:
-            refused_ids += ["storage_buckets", "table_writes"]
+            refused_ids += ["storage_buckets", "table_writes", "db_health"]
             refused_ids += [
                 check_id
                 for check_id, asked in (
@@ -455,6 +462,7 @@ def _snapshot_checks(
                     ("auth_config", args.with_auth_config),
                     ("health_backups", args.with_backups),
                     ("health_logs", args.with_logs),
+                    ("advisors_performance", args.with_performance),
                 )
                 if asked
             ]
@@ -489,6 +497,18 @@ def _snapshot_checks(
             results.append(failed)
         try:
             results.append(
+                db_health.run(
+                    api_snapshot.asker(target, args.owner_approved, args.token_env),
+                    f"statistics and catalog of project {target.project_ref}, read through the "
+                    "Management API read-only query endpoint",
+                )
+            )
+        except Refusal as refusal:
+            failed = CheckResult(id="db_health", title=db_health.TITLE, status=ERROR)
+            failed.reason = str(refusal)
+            results.append(failed)
+        try:
+            results.append(
                 health.run(
                     api_snapshot.asker(target, args.owner_approved, args.token_env),
                     f"pg_cron job list of project {target.project_ref}, read through the "
@@ -511,6 +531,19 @@ def _snapshot_checks(
                 )
             except Refusal as refusal:
                 failed = CheckResult(id="advisors", title=advisors.TITLE, status=ERROR)
+                failed.reason = str(refusal)
+                results.append(failed)
+        if args.with_performance:
+            try:
+                results.append(
+                    advisors.run_performance(
+                        target,
+                        lambda: api_snapshot.advisors_performance(target, args.owner_approved, args.token_env),
+                        f"performance advisors of project {target.project_ref}, read through the Management API",
+                    )
+                )
+            except Refusal as refusal:
+                failed = CheckResult(id="advisors_performance", title=advisors.PERFORMANCE_TITLE, status=ERROR)
                 failed.reason = str(refusal)
                 results.append(failed)
         if args.with_auth_config:
@@ -687,6 +720,7 @@ def _live_checks(
             results.append(live.run_function_exposure(connection, target, evidence))
             results.append(storage_buckets.run_on_connection(connection, target, evidence))
             results.append(table_writes.run_on_connection(connection, target, evidence))
+            results.append(db_health.run_on_connection(connection, evidence))
             results.append(health.run_on_connection(connection, evidence, args.cron_days, target.expected_cron_jobs))
 
         if "probe" in skip:
@@ -844,6 +878,12 @@ def cmd_check(args: argparse.Namespace) -> int:
         checks.append(_not_run("storage_buckets", "buckets are read through --via-api or a database connection"))
     if not any(check.id == "table_writes" for check in checks):
         checks.append(_not_run("table_writes", "table privileges are read through --via-api or a database connection"))
+    if not any(check.id == "db_health" for check in checks):
+        checks.append(_not_run("db_health", "statistics are read through --via-api or a database connection"))
+    if not any(check.id == "advisors_performance" for check in checks):
+        reason = (advisors.PERFORMANCE_NOT_ASKED if args.via_api
+                  else "the performance advisors are only read with --via-api --with-performance")
+        checks.append(_not_run("advisors_performance", reason))
     if not any(check.id == "advisors" for check in checks):
         reason = advisors.NOT_ASKED if args.via_api else "the advisors are only read with --via-api --with-advisors"
         checks.append(_not_run("advisors", reason))

@@ -25,6 +25,11 @@ from .model import ERROR, CheckResult, Finding
 from .targets import Target
 
 TITLE = "Supabase Security Advisor lints (the platform's own checks)"
+PERFORMANCE_TITLE = "Supabase Performance Advisor lints (indexes, policies that re-run per row, and more)"
+PERFORMANCE_NOT_ASKED = ("not asked for; add --with-performance to --via-api (the token then also needs "
+                         "advisors_read)")
+# Performance lints cost speed, not safety, so they rank one step lower.
+_PERFORMANCE_SEVERITY = {"ERROR": "medium", "WARN": "low", "INFO": "info"}
 SOURCE = "advisor"
 NOT_ASKED = "not asked for; add --with-advisors to --via-api (the token then also needs advisors_read)"
 MAX_NAMES = 5
@@ -98,7 +103,7 @@ def _group(lints: list) -> dict[str, dict]:
     return groups
 
 
-def judge(result: CheckResult, answer, target: Target) -> CheckResult:
+def judge(result: CheckResult, answer, target: Target, kind: str = "security") -> CheckResult:
     lints = lints_of(answer)
     if lints is None:
         result.status, result.reason = ERROR, "the advisor answer was not in the documented shape"
@@ -112,7 +117,8 @@ def judge(result: CheckResult, answer, target: Target) -> CheckResult:
         if name in ignore:
             ignored[name] = count
             continue
-        severity = _SEVERITY.get(str(lint.get("level")).upper(), "medium")
+        levels = _PERFORMANCE_SEVERITY if kind == "performance" else _SEVERITY
+        severity = levels.get(str(lint.get("level")).upper(), "low" if kind == "performance" else "medium")
         shown = ""
         if names:
             more = f" and {count - len(names)} more" if count > len(names) else ""
@@ -126,11 +132,17 @@ def judge(result: CheckResult, answer, target: Target) -> CheckResult:
                 f"{_text(lint.get('description'))}{link}",
             )
         )
-    result.notes.append(
-        f"{len(groups)} kinds of lint returned, {total} objects in all. Security lints only: the "
-        "performance and health advisors were not read. These are the platform's checks, not "
-        "pgrls's analysis of what each policy lets a caller do."
-    )
+    if kind == "performance":
+        result.notes.append(
+            f"{len(groups)} kinds of lint returned, {total} objects in all. Supabase marks this "
+            "endpoint experimental, so its answer may change."
+        )
+    else:
+        result.notes.append(
+            f"{len(groups)} kinds of lint returned, {total} objects in all. Security lints only. "
+            "These are the platform's checks, not pgrls's analysis of what each policy lets a "
+            "caller do."
+        )
     if ignored:
         result.notes.append(
             "not counted because advisors_ignore lists them: "
@@ -149,3 +161,9 @@ def run(target: Target, fetch, evidence: str) -> CheckResult:
     """`fetch` returns the decoded answer of the security advisors endpoint."""
     result = CheckResult(id="advisors", title=TITLE, evidence=evidence)
     return judge(result, fetch(), target)
+
+
+def run_performance(target: Target, fetch, evidence: str) -> CheckResult:
+    """`fetch` returns the decoded answer of the performance advisors endpoint."""
+    result = CheckResult(id="advisors_performance", title=PERFORMANCE_TITLE, evidence=evidence)
+    return judge(result, fetch(), target, "performance")

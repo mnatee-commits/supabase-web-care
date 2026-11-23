@@ -44,6 +44,8 @@ Full manual: [MANUAL.md](MANUAL.md) (English) Â· [README_TH.md](README_TH.md) (à
 | 24-hour API log summary, counts only | Management API, opt-in |
 | Sign-in settings, reduced to an allowlist so no secret is kept | Management API, opt-in |
 | Supabase's own security lints (Security Advisor) | Management API, opt-in |
+| Database health: invalid indexes, bloat, transaction-ID age, idle sessions, sequences near their limit | database or Management API |
+| Supabase's Performance Advisor | Management API, opt-in |
 | What an anonymous visitor can read (HEAD requests only) | Data API |
 | What differs between two environments (`inventory`, then `compare`) | database or Management API |
 

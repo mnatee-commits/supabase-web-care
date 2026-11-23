@@ -55,6 +55,8 @@ def test_offline_check_writes_a_report_and_fails_on_high(tmp_path):
         "health_cron": "NOT_RUN",
         "health_backups": "NOT_RUN",
         "health_logs": "NOT_RUN",
+        "db_health": "NOT_RUN",
+        "advisors_performance": "NOT_RUN",
         "anon_probe": "NOT_RUN",
     }
     markdown = (out / "report.md").read_text()
@@ -145,6 +147,8 @@ def test_live_check_end_to_end(pg, tmp_path, monkeypatch):
         "health_cron": "NOT_RUN",
         "health_backups": "NOT_RUN",
         "health_logs": "NOT_RUN",
+        "db_health": "PASS",
+        "advisors_performance": "NOT_RUN",
         "anon_probe": "NOT_RUN",
     }
     text = (out / "report.json").read_text() + (out / "report.md").read_text()
