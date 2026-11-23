@@ -38,6 +38,7 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.31 | `webcare init` and first-run steps in the skill | Test suite |
 | 1.32 | A yes at the terminal before checking real data | Test suite |
 | 1.33 | Stable report.json: `schema_version` and a published JSON Schema | Test suite validates real reports |
+| 1.34 | Fixes from the third outside review: Realtime policies, materialized views, deleted migrations, parity group | The changed statements ran on a real project |
 
 ## In progress
 
@@ -46,6 +47,10 @@ Nothing at the moment.
 ## Planned, not started
 
 Nothing at the moment; the plan decided with the owner on 23 November 2026 is done (1.30–1.33).
+
+1. **Unindexed foreign keys without the Management API.** The Performance Advisor
+   (`--with-performance`) reports them, but a run over a direct connection alone does not
+   (noted by the third review).
 
 ## Waiting on a decision
 

@@ -31,7 +31,7 @@ def keep(answer) -> dict:
 
 
 def _schemas(value) -> list[str]:
-    return [part.strip() for part in str(value or "").split(",") if part.strip()]
+    return [part.strip().strip('"').lower() for part in str(value or "").split(",") if part.strip()]
 
 
 def judge(result: CheckResult, settings: dict, target: Target) -> CheckResult:

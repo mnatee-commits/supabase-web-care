@@ -85,3 +85,35 @@ def test_parity_against_the_test_database(pg, tmp_path, monkeypatch):
           "--out-dir", str(out)])
     checks = {check["id"]: check for check in json.loads((out / "report.json").read_text())["checks"]}
     assert checks["parity"]["status"] == "PASS", checks["parity"]
+
+
+@needs_git
+def test_a_deleted_migration_counts_as_a_sql_change_and_odd_names_survive(tmp_path):
+    repo = tmp_path / "site"
+    (repo / "migrations").mkdir(parents=True)
+    (repo / "migrations" / "001.sql").write_text("create table public.t (id int);\n")
+    (repo / "migrations" / "002_rls.sql").write_text("alter table public.t enable row level security;\n")
+    git(repo, "init", "-q")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "first")
+    (repo / "migrations" / "002_rls.sql").unlink()
+    key = "sb_secret_" + "t" * 24
+    (repo / "บันทึก ไทย.js").write_text(f"const k = '{key}';\n")
+    changed = changes.changed_files(repo, "HEAD")
+    assert (repo / "migrations" / "002_rls.sql").resolve() in changed
+    assert (repo / "บันทึก ไทย.js").resolve() in changed
+    assert changes.check_ref("HEAD^") == "HEAD^"
+    out = tmp_path / "out"
+    main(["check", "--repo", str(repo), "--migrations", str(repo / "migrations"), "--changed-since", "HEAD",
+          "--out-dir", str(out)])
+    checks = {check["id"]: check for check in json.loads((out / "report.json").read_text())["checks"]}
+    assert "no SQL file changed" not in checks["rls_static"]["reason"]
+    assert [f["location"] for f in checks["secrets"]["findings"] if f["severity"] == "high"] == ["บันทึก ไทย.js:1"]
+
+
+def test_parity_is_its_own_group():
+    from webcare import focus
+
+    assert focus.group_of("parity") == "parity"
+    assert "parity" not in focus.parse_groups(["security"])
+    assert focus.parse_groups(["parity"]) == ("parity",)

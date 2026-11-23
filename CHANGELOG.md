@@ -3,6 +3,32 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.34.0
+Fixes from the third outside review (Gemini, 23 November 2026, of 1.22.0 to 1.25.0).
+- `realtime_messages_open` judged USING and WITH CHECK together, so a policy that scoped
+  reading but left sending open (`WITH CHECK (true)`) was missed; each is now judged on its
+  own. New `realtime_messages_open_to_signed_in` (low): every signed-in user may use every
+  private channel, which matters when users of different organisations must not hear
+  each other.
+- `view_runs_as_owner` no longer covers materialized views, which cannot use
+  `security_invoker`; new `matview_readable_by_api_roles` (medium) says what to do instead.
+- `--changed-since` counts a deleted migration as a SQL change, so removing the file that
+  enabled RLS no longer skips the SQL checks; git names are read NUL-separated, so Thai or
+  spaced file names are no longer lost to git's quoting.
+- `parity` is a group of its own: changes since a saved inventory no longer fail
+  `--fail-groups security` or ride along with `--group security`.
+- Served schemas are compared without regard to case or quotes; the parity note on
+  schemas compares sets, not order; the lock-wait message says the time counts from the
+  statement's start, since Postgres does not record when a wait began.
+
+Reviewed and left as is, with the reason:
+- `--changed-since HEAD^` was already accepted: the revision pattern includes `^`.
+- `db_extra_search_path` does not expose functions: PostgREST serves RPC only from the
+  schemas in `db_schema`; the extra path only resolves names. It stays a note.
+- The `xid_age` and `sequences` parts already sort before their row limit.
+- Unindexed foreign keys over a direct connection without the Management API remain
+  uncovered; recorded on the roadmap.
+
 ## 1.33.0
 - report.json carries `schema_version` ("1.0"), and its shape is published in
   `schema/report.schema.json`. Within 1.x fields are only added; statuses and severities

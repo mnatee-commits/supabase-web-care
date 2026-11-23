@@ -1010,7 +1010,9 @@ def cmd_check(args: argparse.Namespace) -> int:
             static.reason = functions.reason = "SQL file not found: " + ", ".join(missing)
         elif not sql_files:
             static.reason = functions.reason = "no SQL files given (--migrations or --sql-file)"
-        elif changed is not None and not any(path.resolve() in changed for path in sql_files):
+        elif changed is not None and not any(path.resolve() in changed for path in sql_files) and not any(
+            path.suffix == ".sql" and not path.exists() for path in changed
+        ):
             static.reason = functions.reason = f"no SQL file changed since {args.changed_since}"
         else:
             requested.add("rls_static")

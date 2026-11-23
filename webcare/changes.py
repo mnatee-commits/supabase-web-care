@@ -50,6 +50,8 @@ def changed_files(path: Path, ref: str) -> set[Path]:
     directory = path if path.is_dir() else path.parent
     top = Path(_git(directory, "rev-parse", "--show-toplevel").strip())
     _git(top, "rev-parse", "--verify", "--quiet", "--end-of-options", f"{ref}^{{commit}}")
-    names = _git(top, "diff", "--name-only", "--diff-filter=ACMR", "--end-of-options", ref, "--").splitlines()
-    names += _git(top, "ls-files", "--others", "--exclude-standard").splitlines()
+    # -z: names come raw, NUL-separated, so Thai or spaced names are not octal-quoted.
+    # D included: a deleted migration is a change too; the scan skips files that are gone.
+    names = _git(top, "diff", "-z", "--name-only", "--diff-filter=ACMRD", "--end-of-options", ref, "--").split("\0")
+    names += _git(top, "ls-files", "-z", "--others", "--exclude-standard").split("\0")
     return {(top / name).resolve() for name in names if name.strip()}

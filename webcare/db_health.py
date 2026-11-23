@@ -179,8 +179,8 @@ def judge(result: CheckResult, report: dict, t: Thresholds = DEFAULT) -> CheckRe
                 "for this role.")
         for row in _rows(report, "lock_waits"):
             add("lock_wait", "medium", f"role {row.get('role_name')}",
-                f"{row.get('sessions')} session(s) waiting on a lock for up to "
-                f"{_minutes(row.get('longest_seconds'))}")
+                f"{row.get('sessions')} session(s) waiting on a lock, in statements running for up to "
+                f"{_minutes(row.get('longest_seconds'))} (Postgres does not record when the wait began)")
     else:
         result.notes.append(
             "sessions of other roles were not visible to the connected role (it lacks "

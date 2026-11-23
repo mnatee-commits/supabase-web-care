@@ -385,7 +385,30 @@ where p.schemaname = 'realtime'
   and p.tablename = 'messages'
   and p.permissive = 'PERMISSIVE'
   and p.roles && array['anon', 'public']::name[]
-  and coalesce(nullif(btrim(p.qual), ''), nullif(btrim(p.with_check), '')) in ('true', '(true)')
+  -- USING and WITH CHECK each on its own: a policy can scope reading and leave sending open
+  and (btrim(coalesce(p.qual, '')) in ('true', '(true)')
+       or btrim(coalesce(p.with_check, '')) in ('true', '(true)'))
+order by 1;
+
+-- check: realtime_messages_open_to_signed_in
+-- severity: low
+-- title: Realtime Broadcast or Presence open to every signed-in user by an unconditional policy
+-- why: A policy for authenticated whose USING or WITH CHECK is just true lets any signed-in
+--      user listen to or send on every private channel, across tenants or organisations.
+--      Fine for a single team; a leak where users must not see each other's channels.
+select
+  'realtime.messages.' || quote_ident(p.policyname) as location,
+  p.cmd || ' for ' || array_to_string(p.roles, ', ')
+    || ' with no condition: every signed-in user may use every private channel; scope it by '
+    || 'realtime.topic() if users must not hear each other' as detail
+from pg_catalog.pg_policies p
+where p.schemaname = 'realtime'
+  and p.tablename = 'messages'
+  and p.permissive = 'PERMISSIVE'
+  and p.roles && array['authenticated']::name[]
+  and not (p.roles && array['anon', 'public']::name[])
+  and (btrim(coalesce(p.qual, '')) in ('true', '(true)')
+       or btrim(coalesce(p.with_check, '')) in ('true', '(true)'))
 order by 1;
 
 -- check: view_runs_as_owner
@@ -404,7 +427,7 @@ select
 from pg_catalog.pg_class c
 join pg_catalog.pg_namespace n on n.oid = c.relnamespace
 where n.nspname = any(%(schemas)s)
-  and c.relkind in ('v', 'm')
+  and c.relkind = 'v'
   and pg_catalog.to_regrole('anon') is not null
   and pg_catalog.to_regrole('authenticated') is not null
   and not exists (
@@ -440,4 +463,27 @@ where not (n.nspname = any(%(schemas)s))
   and pg_catalog.to_regrole('authenticated') is not null
   and (pg_catalog.has_schema_privilege('anon', n.oid, 'USAGE')
        or pg_catalog.has_schema_privilege('authenticated', n.oid, 'USAGE'))
+order by 1;
+
+-- check: matview_readable_by_api_roles
+-- severity: medium
+-- title: Materialized view that API roles may read
+-- why: A materialized view stores rows computed by its owner. It cannot have RLS and cannot
+--      use security_invoker, so anyone who may read it sees every stored row. Revoke SELECT
+--      from the API roles, or move it out of the schemas the Data API serves.
+select
+  quote_ident(n.nspname) || '.' || quote_ident(c.relname) as location,
+  concat_ws(' and ',
+    case when pg_catalog.has_table_privilege('anon', c.oid, 'SELECT') then 'anon' end,
+    case when pg_catalog.has_table_privilege('authenticated', c.oid, 'SELECT') then 'authenticated' end)
+    || ' may read every row this materialized view stores; it cannot have RLS, so revoke '
+    || 'SELECT or keep it out of the schemas the Data API serves' as detail
+from pg_catalog.pg_class c
+join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+where n.nspname = any(%(schemas)s)
+  and c.relkind = 'm'
+  and pg_catalog.to_regrole('anon') is not null
+  and pg_catalog.to_regrole('authenticated') is not null
+  and (pg_catalog.has_table_privilege('anon', c.oid, 'SELECT')
+       or pg_catalog.has_table_privilege('authenticated', c.oid, 'SELECT'))
 order by 1;

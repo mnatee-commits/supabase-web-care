@@ -22,8 +22,10 @@ def test_extra_checks_file_holds_only_selects():
         "extension_cron_reachable",
         "realtime_table_without_rls",
         "realtime_messages_open",
+        "realtime_messages_open_to_signed_in",
         "view_runs_as_owner",
         "schema_usable_but_unchecked",
+        "matview_readable_by_api_roles",
     ]
 
 
@@ -240,7 +242,10 @@ def test_guard_that_trusts_current_user_and_default_privileges_are_found(pg):
     cron = grouped["extension_cron_reachable"]
     assert [f.location for f in cron] == ["schema cron (role authenticated)"] and "schedule" in cron[0].message
     assert [(f.location, f.severity) for f in grouped["realtime_table_without_rls"]] == [("public.live_feed", "high")]
-    assert [f.location for f in grouped["realtime_messages_open"]] == ["realtime.messages.anyone_listens"]
+    assert sorted(f.location for f in grouped["realtime_messages_open"]) == [
+        "realtime.messages.anyone_listens", "realtime.messages.anyone_sends"]
+    assert [f.location for f in grouped["realtime_messages_open_to_signed_in"]] == ["realtime.messages.members_all"]
+    assert [f.location for f in grouped["matview_readable_by_api_roles"]] == ["public.cached_totals"]
     assert [f.location for f in grouped["view_runs_as_owner"]] == ["public.owner_view"]
     assert "public.invoker_view" not in " ".join(f.location for f in grouped["view_runs_as_owner"])
     assert "api_extra" in [f.location for f in grouped["schema_usable_but_unchecked"]]

@@ -86,3 +86,10 @@ grant select on public.owner_view, public.invoker_view to anon;
 -- A schema the API roles may use that the target does not list.
 create schema api_extra;
 grant usage on schema api_extra to anon;
+
+-- Realtime: reading scoped, sending left open (WITH CHECK true); and a policy open to every signed-in user.
+create policy anyone_sends on realtime.messages for all to anon using (id = 1) with check (true);
+create policy members_all on realtime.messages for all to authenticated using (true) with check (true);
+-- A materialized view the API roles may read: it has no RLS and no security_invoker.
+create materialized view public.cached_totals as select count(*) as n from public.secret_notes;
+grant select on public.cached_totals to anon;

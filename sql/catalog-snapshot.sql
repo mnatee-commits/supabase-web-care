@@ -388,7 +388,27 @@ select jsonb_build_object(
           and p.tablename = 'messages'
           and p.permissive = 'PERMISSIVE'
           and p.roles && array['anon', 'public']::name[]
-          and coalesce(nullif(btrim(p.qual), ''), nullif(btrim(p.with_check), '')) in ('true', '(true)')
+          and (btrim(coalesce(p.qual, '')) in ('true', '(true)')
+               or btrim(coalesce(p.with_check, '')) in ('true', '(true)'))
+        order by 1
+        limit 500
+      ) q
+    ), '[]'::jsonb),
+    'realtime_messages_open_to_signed_in', coalesce((
+      select jsonb_agg(to_jsonb(q)) from (
+        select
+          'realtime.messages.' || quote_ident(p.policyname) as location,
+          p.cmd || ' for ' || array_to_string(p.roles, ', ')
+            || ' with no condition: every signed-in user may use every private channel; scope it by '
+            || 'realtime.topic() if users must not hear each other' as detail
+        from pg_catalog.pg_policies p
+        where p.schemaname = 'realtime'
+          and p.tablename = 'messages'
+          and p.permissive = 'PERMISSIVE'
+          and p.roles && array['authenticated']::name[]
+          and not (p.roles && array['anon', 'public']::name[])
+          and (btrim(coalesce(p.qual, '')) in ('true', '(true)')
+               or btrim(coalesce(p.with_check, '')) in ('true', '(true)'))
         order by 1
         limit 500
       ) q
@@ -405,7 +425,7 @@ select jsonb_build_object(
         from pg_catalog.pg_class c
         join pg_catalog.pg_namespace n on n.oid = c.relnamespace
         where n.nspname = any(array['public']::text[])
-          and c.relkind in ('v', 'm')
+          and c.relkind = 'v'
           and pg_catalog.to_regrole('anon') is not null
           and pg_catalog.to_regrole('authenticated') is not null
           and not exists (
@@ -439,6 +459,27 @@ select jsonb_build_object(
           and pg_catalog.to_regrole('authenticated') is not null
           and (pg_catalog.has_schema_privilege('anon', n.oid, 'USAGE')
                or pg_catalog.has_schema_privilege('authenticated', n.oid, 'USAGE'))
+        order by 1
+        limit 500
+      ) q
+    ), '[]'::jsonb),
+    'matview_readable_by_api_roles', coalesce((
+      select jsonb_agg(to_jsonb(q)) from (
+        select
+          quote_ident(n.nspname) || '.' || quote_ident(c.relname) as location,
+          concat_ws(' and ',
+            case when pg_catalog.has_table_privilege('anon', c.oid, 'SELECT') then 'anon' end,
+            case when pg_catalog.has_table_privilege('authenticated', c.oid, 'SELECT') then 'authenticated' end)
+            || ' may read every row this materialized view stores; it cannot have RLS, so revoke '
+            || 'SELECT or keep it out of the schemas the Data API serves' as detail
+        from pg_catalog.pg_class c
+        join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = any(array['public']::text[])
+          and c.relkind = 'm'
+          and pg_catalog.to_regrole('anon') is not null
+          and pg_catalog.to_regrole('authenticated') is not null
+          and (pg_catalog.has_table_privilege('anon', c.oid, 'SELECT')
+               or pg_catalog.has_table_privilege('authenticated', c.oid, 'SELECT'))
         order by 1
         limit 500
       ) q

@@ -30,7 +30,7 @@ AREAS: dict[str, Area] = {
     "tables": Area(
         frozenset({"rls_static", "rls_live", "table_writes", "extra_live", "anon_probe", "data_api"}),
         frozenset({"update_without_select", "auth_role_deprecated", "default_table_privileges",
-                   "view_runs_as_owner", "schema_usable_but_unchecked"}),
+                   "view_runs_as_owner", "schema_usable_but_unchecked", "matview_readable_by_api_roles"}),
         optional=("with_data_api",),
     ),
     "storage": Area(
@@ -43,7 +43,8 @@ AREAS: dict[str, Area] = {
     ),
     "realtime": Area(
         frozenset({"extra_live"}),
-        frozenset({"realtime_table_without_rls", "realtime_messages_open"}),
+        frozenset({"realtime_table_without_rls", "realtime_messages_open",
+                   "realtime_messages_open_to_signed_in"}),
     ),
     "parity": Area(frozenset({"parity"})),
     "platform": Area(frozenset({"platform"}), optional=("with_platform",)),
@@ -58,8 +59,11 @@ PROFILES = ("quick", "full")
 # Wider names for sets of areas. Health findings say how the database is running;
 # everything else is about who may reach what.
 GROUPS: dict[str, tuple[str, ...]] = {
-    "security": tuple(name for name in AREAS if name != "health"),
+    "security": tuple(name for name in AREAS if name not in ("health", "parity")),
     "health": ("health",),
+    # Changes since a saved inventory ask "was this intended?"; they are not faults by
+    # themselves, so they neither fail a security gate nor ride along with it.
+    "parity": ("parity",),
 }
 # Optional --via-api checks, by report row, for --only.
 OPTIONAL_BY_CHECK = {
@@ -71,7 +75,11 @@ OPTIONAL_BY_CHECK = {
 
 def group_of(check_id: str) -> str:
     """The group a report row belongs to, for --fail-groups."""
-    return "health" if check_id in AREAS["health"].checks else "security"
+    if check_id in AREAS["health"].checks:
+        return "health"
+    if check_id in AREAS["parity"].checks:
+        return "parity"
+    return "security"
 
 
 def catalog_ids() -> set[str]:

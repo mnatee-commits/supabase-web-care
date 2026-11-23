@@ -536,3 +536,14 @@ def test_platform_settings_are_read_only_when_asked(api, tmp_path, capsys, monke
     assert gets == [f"/v1/projects/{REF}/ssl-enforcement", f"/v1/projects/{REF}/network-restrictions"]
     found = {(f["rule"], f["severity"]) for f in checks["platform"]["findings"]}
     assert found == {("ssl_not_enforced", "medium"), ("database_open_to_every_address", "low")}
+
+
+def test_served_schema_names_are_compared_without_regard_to_case():
+    from webcare import data_api
+    from webcare.model import CheckResult
+    from webcare.targets import Target
+
+    target = Target(name="t", env="staging", data="synthetic", schemas=("public", "reports"))
+    result = data_api.judge(CheckResult(id="data_api", title="t"),
+                            {"db_schema": "Public, \"reports\", graphql_public"}, target)
+    assert result.findings == []

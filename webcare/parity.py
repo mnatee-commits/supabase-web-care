@@ -56,7 +56,7 @@ def judge(result: CheckResult, saved: dict, current: dict) -> CheckResult:
             SOURCE, f"parity_{name}", "medium" if name in ACCESS_PARTS else "low", name,
             f"since {since}: " + "; ".join(pieces) + ". If intended, save a new inventory.",
         ))
-    if list(saved.get("schemas", [])) != list(current.get("schemas", [])):
+    if set(saved.get("schemas", [])) != set(current.get("schemas", [])):
         result.notes.append(
             f"the saved inventory covers schemas {', '.join(saved.get('schemas', []))}, this run "
             f"{', '.join(current.get('schemas', []))}; differences may come from that"

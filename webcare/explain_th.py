@@ -71,6 +71,8 @@ RULES: dict[str, str] = {
     "extension_cron_reachable": "role ของ API ตั้งงานตามเวลาหรืออ่านรายการงานได้ ต้องถอนสิทธิ์",
     "realtime_table_without_rls": "Realtime ส่งการเปลี่ยนแปลงของตารางนี้ออกไป และไม่มี RLS กรอง ทุกคนที่อ่านได้จะเห็นทุกการเปลี่ยนแปลงทันที",
     "realtime_messages_open": "policy ของช่อง Realtime แบบส่วนตัวเปิดให้ทุกคน ใครมี key สาธารณะก็เข้าฟังและส่งข้อความได้",
+    "realtime_messages_open_to_signed_in": "ผู้ล็อกอินทุกคนเข้าฟังและส่งข้อความในทุกช่อง Realtime แบบส่วนตัวได้ ถ้าผู้ใช้ต่างหน่วยงานต้องไม่เห็นกัน ให้จำกัดด้วย realtime.topic()",
+    "matview_readable_by_api_roles": "materialized view เก็บข้อมูลไว้ล่วงหน้าและมี RLS ไม่ได้ ใครอ่านได้จะเห็นทุกแถวที่เก็บไว้ ถอนสิทธิ์อ่านหรือย้ายออกจาก schema ที่ API เปิด",
     # sign-in settings
     "auth_signup_open": "ใครก็สมัครบัญชีเองได้ ถ้าไม่ได้ตั้งใจให้ปิด หรือประกาศ expected_open_signup",
     "auth_anonymous_signins": "เปิดให้ล็อกอินแบบไม่ระบุตัวตน ผู้ใช้กลุ่มนี้ได้ role authenticated ด้วย policy ต้องแยกให้ออก",
