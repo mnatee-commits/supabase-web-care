@@ -2,7 +2,7 @@
 name: supabase-web-care
 description: Review and troubleshoot Supabase or PostgreSQL-backed websites when asked to inspect database access, RLS, Auth, leaked keys, slow queries, migrations, or staging health. Supports offline review, a bundled read-only check toolkit, and scoped, read-only live diagnosis.
 metadata:
-  version: "1.31.0"
+  version: "1.32.0"
 ---
 
 # Supabase Web Care
@@ -24,7 +24,7 @@ When the person has not used the toolkit before, set it up with them before anyt
 3. Run `python -m webcare init --name <name> --env <env> --real-data <yes|no> --project-ref <ref> --lang <their language>`. It writes `webcare.toml`, contacts nothing, and prints the next steps.
 4. If the project's migrations are in the workspace, run the file check first; it needs no key.
 5. For a database check, tell them how to make an access token themselves: Supabase > Account > Access Tokens, limited to this one project, Database Read only, the shortest expiry, put into the `WEBCARE_ACCESS_TOKEN` variable on their own machine. Never ask them to paste a token into the chat. Tell them to delete it when the check is done.
-6. Run `python -m webcare check --target <name> --via-api --profile full`. For a target that holds real data, add `--owner-approved` only after they have said yes in their own words.
+6. Run `python -m webcare check --target <name> --via-api --profile full`. For a target that holds real data, add `--owner-approved` only after they have said yes in their own words. (At a terminal the tool itself asks for that yes; your commands have no terminal, so it refuses without the flag.)
 7. Explain the "In short" page first, in plain words, and say which checks did not run before saying anything reassuring.
 
 ## Use the bundled toolkit when a shell is available

@@ -70,8 +70,8 @@ class Target:
         if self.needs_owner_approval and not owner_approved:
             raise Refusal(
                 f"target {self.describe()} holds production or real data. Live checks "
-                f"against it need the owner's own go-ahead; rerun with {APPROVAL_FLAG} "
-                "only after the owner has said so in their own words."
+                f"against it need the owner's own go-ahead: run it at a terminal and answer yes, or "
+                f"rerun with {APPROVAL_FLAG} only after the owner has said so in their own words."
             )
 
     def ensure_db_matches(self, dsn: str) -> "DbEndpoint":

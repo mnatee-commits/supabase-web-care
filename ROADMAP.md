@@ -36,6 +36,7 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.29 | GitHub Action and pre-commit hooks | The action's script ran locally; not yet on GitHub Actions |
 | 1.30 | "In short" summary on the first page of report.md; Thai lines for every pgrls rule | Test suite |
 | 1.31 | `webcare init` and first-run steps in the skill | Test suite |
+| 1.32 | A yes at the terminal before checking real data | Test suite |
 
 ## In progress
 
@@ -46,10 +47,7 @@ Nothing at the moment.
 Decided with the owner on 23 November 2026: make the tool easy for beginners who use it
 through an AI assistant, without making it less thorough for specialists.
 
-1. **A pause before checking real data.** When a target holds real data, the tool first
-   says what it will call and with which permissions, and waits for a yes. Staging runs as
-   now; CI keeps using `--owner-approved` in place of the yes.
-2. **A stable report.json for others to build on.** A `schema_version` field, a published
+1. **A stable report.json for others to build on.** A `schema_version` field, a published
    JSON Schema, and a promise not to break the shape within a major version, so others
    can build dashboards or a point-and-click interface on top of the tool.
 

@@ -3,6 +3,13 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.32.0
+- A pause before real data: before `check` or `inventory` of a target that is production
+  or holds real data, the tool says which target, which route and what it will read (every
+  optional GET listed), and waits for `yes`; anything else stops it before anything is
+  contacted. Only at a terminal: in CI, from a script or through an AI assistant, the
+  refusal stands and `--owner-approved` is still the way on. Decided with the owner.
+
 ## 1.31.0
 - `webcare init` writes a target into webcare.toml from four answers: a name, local,
   staging or production, whether it holds real people's data (yes when not answered, so

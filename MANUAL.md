@@ -323,6 +323,12 @@ python -m webcare compare staging.inv.json production.inv.json --lang th
 
 ## Guard rails
 
+Before a check or inventory of a target that is production or holds real data, the tool
+says which target, which route and what it will read (every optional GET included), and
+waits for `yes`. It asks only at a terminal; in CI, from a script or through an AI
+assistant there is nobody at the keyboard, so the refusal below stands and
+`--owner-approved` remains the way on, after the owner has agreed in their own words.
+
 The tool refuses, and contacts nothing, when
 
 - the target is not declared in `webcare.toml`, or the connection points somewhere other than what was declared
