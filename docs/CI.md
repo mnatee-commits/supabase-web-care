@@ -9,6 +9,53 @@ Thai edition: [CI_TH.md](CI_TH.md).
 **Status:** the example workflow has not yet been run on GitHub Actions. The
 commands inside it were tested locally.
 
+## The shortest way: the action
+
+In the site's repository, `.github/workflows/webcare.yml`:
+
+```yaml
+name: webcare
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0               # only needed for changed-since
+      - uses: mnatee-commits/supabase-web-care@<full commit hash of a release>
+        with:
+          migrations: supabase/migrations
+          changed-since: origin/${{ github.base_ref }}   # optional
+          fail-on: high
+          lang: th                     # optional
+```
+
+Pin the action to the full commit hash of a release you have read, never to a branch or
+tag name. The action checks files only (`--skip live --skip probe`) and contacts no
+database. Its inputs reach the script as environment variables and are checked before
+use, so no input becomes part of a shell command. For the longer, hand-written workflow,
+read on.
+
+## pre-commit
+
+With [pre-commit](https://pre-commit.com), add to `.pre-commit-config.yaml`:
+
+```yaml
+- repo: https://github.com/mnatee-commits/supabase-web-care
+  rev: v1.29.0
+  hooks:
+    - id: webcare-secrets
+    - id: webcare-migrations
+      args: [--migrations, supabase/migrations]
+```
+
+`webcare-secrets` scans the files being committed; `webcare-migrations` runs the SQL
+checks whenever a `.sql` file is committed. Both read files only.
+
 ## Steps
 
 1. **Create a baseline once**, locally, from the migrations you already have.

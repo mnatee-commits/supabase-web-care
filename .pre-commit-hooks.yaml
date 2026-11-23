@@ -1,0 +1,22 @@
+# pre-commit hooks (https://pre-commit.com). In a site's .pre-commit-config.yaml:
+#
+#   - repo: https://github.com/mnatee-commits/supabase-web-care
+#     rev: v1.29.0
+#     hooks:
+#       - id: webcare-secrets
+#       - id: webcare-migrations
+#         args: [--migrations, supabase/migrations]
+#
+# Both read files only and contact nothing.
+- id: webcare-secrets
+  name: credentials in staged files (supabase-web-care)
+  entry: webcare secrets
+  language: python
+  pass_filenames: true
+  types: [text]
+- id: webcare-migrations
+  name: RLS and function privileges in SQL migrations (supabase-web-care)
+  entry: webcare check --profile quick --skip secrets --out-dir .webcare-output
+  language: python
+  pass_filenames: false
+  files: \.sql$

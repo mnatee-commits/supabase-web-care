@@ -3,6 +3,16 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.29.0
+- A GitHub Action (`action.yml`): `uses: mnatee-commits/supabase-web-care@<commit>` runs the
+  file checks on a pull request in one step, with inputs for migrations, baseline,
+  changed-since, fail-on, SARIF and language. It contacts no database. Inputs reach the
+  script only as environment variables and are checked before use; a test fails if an input
+  is ever placed in a shell command. `setup-python` is pinned to a commit.
+- pre-commit hooks (`.pre-commit-hooks.yaml`): `webcare-secrets` and `webcare-migrations`.
+- Tried locally: the action's script found the bad fixture's problems and refused a
+  `fail-on` value carrying a shell command. Not yet run on GitHub Actions.
+
 ## 1.28.0
 - Thai reports explain every finding in Thai: `report.md` with `--lang th` gains a column
   with what the rule means and what to do, next to the English detail, for every rule the

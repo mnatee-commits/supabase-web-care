@@ -4,6 +4,48 @@
 
 **สถานะ:** ไฟล์ตัวอย่างยังไม่เคยรันบน GitHub Actions จริง คำสั่งข้างในทดสอบในเครื่องแล้ว
 
+## วิธีที่สั้นที่สุด: ใช้ action
+
+ใน repo ของเว็บ สร้าง `.github/workflows/webcare.yml`
+
+```yaml
+name: webcare
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0               # ต้องใช้เฉพาะเมื่อใส่ changed-since
+      - uses: mnatee-commits/supabase-web-care@<เลข commit เต็มของรุ่นที่ใช้>
+        with:
+          migrations: supabase/migrations
+          changed-since: origin/${{ github.base_ref }}   # ใส่หรือไม่ก็ได้
+          fail-on: high
+          lang: th                     # ใส่หรือไม่ก็ได้
+```
+
+ล็อก action ด้วยเลข commit เต็มของรุ่นที่อ่านแล้ว ไม่ใช้ชื่อ branch หรือ tag action ตรวจจากไฟล์อย่างเดียว ไม่ติดต่อฐานข้อมูล ค่าที่ใส่ใน `with:` ส่งเข้าสคริปต์เป็นตัวแปรสภาพแวดล้อมและถูกตรวจก่อนใช้ จึงไม่มีค่าใดกลายเป็นคำสั่ง shell ถ้าต้องการ workflow แบบเขียนเองเต็มรูปแบบ อ่านหัวข้อถัดไป
+
+## pre-commit
+
+ถ้าใช้ [pre-commit](https://pre-commit.com) เพิ่มใน `.pre-commit-config.yaml`
+
+```yaml
+- repo: https://github.com/mnatee-commits/supabase-web-care
+  rev: v1.29.0
+  hooks:
+    - id: webcare-secrets
+    - id: webcare-migrations
+      args: [--migrations, supabase/migrations]
+```
+
+`webcare-secrets` สแกนไฟล์ที่กำลัง commit ส่วน `webcare-migrations` ตรวจ SQL ทุกครั้งที่ commit ไฟล์ `.sql` ทั้งสองอ่านไฟล์อย่างเดียว
+
 ## ขั้นตอน
 
 1. **สร้าง baseline ครั้งเดียว** ในเครื่อง จาก migration ที่มีอยู่

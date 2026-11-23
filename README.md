@@ -65,8 +65,9 @@ python -m webcare check --repo <web project> --migrations <migrations folder>
 Live checks need a target declared in `webcare.toml`; copy
 `webcare.example.toml`. Credentials come from environment variables only.
 
-To check migrations on every pull request, see [docs/CI.md](docs/CI.md) and
-the example workflow in `docs/examples/`. `--sarif` also writes `report.sarif`, so
+To check migrations on every pull request, use the action
+(`uses: mnatee-commits/supabase-web-care@<commit>`) or the pre-commit hooks; see
+[docs/CI.md](docs/CI.md) and the example workflow in `docs/examples/`. `--sarif` also writes `report.sarif`, so
 code scanning can show findings on the lines of a pull request. What has and has not been verified
 against a real system is listed at the end of [docs/OFFLINE_VM.md](docs/OFFLINE_VM.md).
 
