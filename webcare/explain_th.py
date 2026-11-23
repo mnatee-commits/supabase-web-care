@@ -66,7 +66,7 @@ RULES: dict[str, str] = {
     "storage_bucket_upsert_incomplete": "ผู้ล็อกอินอัปโหลดใน bucket นี้ได้แต่แทนที่ไฟล์ไม่ได้ เพิ่ม policy SELECT และ UPDATE ของ bucket นี้",
     "expected_public_bucket_missing": "รายการ bucket สาธารณะที่ประกาศไว้ มี bucket ที่ไม่มีแล้วหรือไม่ได้เปิด ให้ลบออกจากรายการ",
     # extensions and realtime
-    "extension_net_callable": "role ของ API เรียก pg_net ได้ ฐานข้อมูลจะยิง HTTP ไปที่ไหนก็ได้แทนเขา ถ้าไม่มีฟังก์ชันที่ต้องใช้ ให้ถอนสิทธิ์",
+    "extension_net_callable": "role ของ API เรียก pg_net ได้ ฐานข้อมูลจะยิง HTTP ไปที่ไหนก็ได้แทนเขา บน Supabase schema net เป็นของ supabase_admin จึงถอนสิทธิ์เองไม่ได้ ถ้าไม่มีอะไรใช้ pg_net ให้ปิด extension ถ้ามีให้ขอ Supabase ถอนสิทธิ์",
     "extension_vault_reachable": "role ของ API อ่าน Vault หรือเรียกฟังก์ชันของมันได้ ความลับใน Vault อาจหลุด ต้องถอนสิทธิ์ทันที",
     "extension_cron_reachable": "role ของ API ตั้งงานตามเวลาหรืออ่านรายการงานได้ ต้องถอนสิทธิ์",
     "realtime_table_without_rls": "Realtime ส่งการเปลี่ยนแปลงของตารางนี้ออกไป และไม่มี RLS กรอง ทุกคนที่อ่านได้จะเห็นทุกการเปลี่ยนแปลงทันที",

@@ -2,7 +2,7 @@
 name: supabase-web-care
 description: Review and troubleshoot Supabase or PostgreSQL-backed websites when asked to inspect database access, RLS, Auth, leaked keys, slow queries, migrations, or staging health. Supports offline review, a bundled read-only check toolkit, and scoped, read-only live diagnosis.
 metadata:
-  version: "1.34.0"
+  version: "1.34.1"
 ---
 
 # Supabase Web Care

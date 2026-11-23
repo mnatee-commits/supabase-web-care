@@ -236,6 +236,8 @@ def test_guard_that_trusts_current_user_and_default_privileges_are_found(pg):
     net = grouped["extension_net_callable"]
     assert sorted(f.location for f in net) == ["schema net (role anon)", "schema net (role authenticated)"]
     assert net[0].severity == "medium" and "http_post" in net[0].message
+    # The checking role does not own schema net, so the detail must not advise a REVOKE.
+    assert "has no effect" in net[0].message and "drop extension pg_net" in net[0].message
     vault = grouped["extension_vault_reachable"]
     assert [(f.location, f.severity) for f in vault] == [("schema vault (role authenticated)", "high")]
     assert "decrypted_secrets" in vault[0].message

@@ -275,8 +275,16 @@ select
   r.rolname || ' may call ' || count(*) || ' pg_net functions ('
     || string_agg(p.proname, ', ' order by p.proname)
     || '); schema net is not served by the Data API, so the way in is a function in an '
-    || 'exposed schema that runs as the caller and passes a URL on. Before revoking, find '
-    || 'triggers and functions that call net as the signed-in user, since they would stop working'
+    || 'exposed schema that runs as the caller and passes a URL on. '
+    || case when pg_catalog.pg_get_userbyid(n.nspowner) = current_user
+                 or pg_catalog.pg_has_role(current_user, n.nspowner, 'MEMBER')
+            then 'Before revoking, find triggers and functions that call net as the signed-in user, '
+                 || 'since they would stop working'
+            else 'Schema net belongs to ' || pg_catalog.pg_get_userbyid(n.nspowner)
+                 || ', so a REVOKE by your role has no effect (Postgres only warns). If nothing uses '
+                 || 'pg_net, turn it off (drop extension pg_net, without cascade); otherwise ask '
+                 || 'the platform to revoke it, and keep schema net out of the Data API'
+       end
     as detail
 from pg_catalog.pg_namespace n
 join pg_catalog.pg_proc p on p.pronamespace = n.oid
@@ -285,7 +293,7 @@ where n.nspname = 'net'
   and r.rolname in ('anon', 'authenticated')
   and pg_catalog.has_schema_privilege(r.oid, n.oid, 'USAGE')
   and pg_catalog.has_function_privilege(r.oid, p.oid, 'EXECUTE')
-group by r.rolname
+group by r.rolname, n.nspowner
 order by 1;
 
 -- check: extension_vault_reachable

@@ -3,6 +3,13 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.34.1
+- `extension_net_callable` no longer advises a REVOKE that cannot work: when schema `net`
+  belongs to another role (on Supabase, `supabase_admin`), a REVOKE by the checking role
+  only warns. The detail now says so and names the ways that do work: turn pg_net off if
+  nothing uses it, or ask the platform to revoke it. Found while drafting a fix on a real
+  project, where the owner of `net` was `supabase_admin`.
+
 ## 1.34.0
 Fixes from the third outside review (Gemini, 23 November 2026, of 1.22.0 to 1.25.0).
 - `realtime_messages_open` judged USING and WITH CHECK together, so a policy that scoped
