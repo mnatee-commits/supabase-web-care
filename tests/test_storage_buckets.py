@@ -7,8 +7,9 @@ from webcare.model import CheckResult
 from webcare.targets import Target
 
 
-def bucket(name="files", public=False, policies=1, anon=(), size=True, types=True):
+def bucket(name="files", public=False, policies=1, anon=(), size=True, types=True, signed_in=()):
     return {"bucket": name, "public": public, "policies": policies, "anon_commands": list(anon),
+            "authenticated_commands": list(signed_in),
             "has_size_limit": size, "has_type_list": types}
 
 
@@ -94,3 +95,11 @@ def test_against_a_database(pg):
     finally:
         connection.close()
     assert result.status == "NOT_RUN"
+
+
+def test_upsert_is_judged_bucket_by_bucket():
+    result = judged(bucket("avatars", signed_in=("INSERT", "SELECT", "UPDATE")),
+                    bucket("reports", signed_in=("INSERT",)),
+                    bucket("everything", signed_in=("ALL",)))
+    assert found(result) == {("storage_bucket_upsert_incomplete", "low", "bucket 'reports'")}
+    assert "SELECT and UPDATE" in result.findings[0].message and "authenticated" in result.findings[0].message

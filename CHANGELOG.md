@@ -3,6 +3,13 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.26.0
+- Storage, bucket by bucket: a bucket where signed-in users may upload but not replace a
+  file (no SELECT or UPDATE policy naming that bucket) is a low finding. The table-wide
+  `storage_upsert_incomplete` stays for connections that cannot read the bucket list.
+  Visitors who are not signed in are left out on purpose: their upload policy is already a
+  finding, and the fix is never to give them UPDATE. Ran on a real project.
+
 ## 1.25.0
 - `check --parity <inventory file>`: takes a new inventory of the same target and reports
   every change since the file was saved (medium for grants, policies, functions and

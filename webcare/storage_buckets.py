@@ -49,7 +49,12 @@ select jsonb_build_object(
                select array_agg(distinct pol.command) from pol
                 where position(quote_literal(b.id) in pol.expr) > 0
                   and pol.roles && array['anon', 'public']
-             ), array[]::text[]) as anon_commands
+             ), array[]::text[]) as anon_commands,
+             coalesce((
+               select array_agg(distinct pol.command) from pol
+                where position(quote_literal(b.id) in pol.expr) > 0
+                  and pol.roles && array['authenticated', 'public']
+             ), array[]::text[]) as authenticated_commands
         from storage.buckets b
        order by b.id
        limit {MAX_BUCKETS}
@@ -118,6 +123,20 @@ def judge(result: CheckResult, report: dict, target: Target) -> CheckResult:
                 "the bucket is private, yet a policy lets visitors who are not signed in read "
                 "and list its files",
             )
+        # Signed-in users only: for visitors who are not signed in, an upload policy is
+        # already a finding, and the fix is never to give them UPDATE as well.
+        for role, key in (("authenticated", "authenticated_commands"),):
+            commands = {str(command) for command in bucket.get(key) or []}
+            if "ALL" in commands:
+                continue
+            if "INSERT" in commands and not {"SELECT", "UPDATE"} <= commands:
+                missing = " and ".join(c for c in ("SELECT", "UPDATE") if c not in commands)
+                add(
+                    "storage_bucket_upsert_incomplete", "low", place,
+                    f"{role} may upload new files to this bucket but has no {missing} policy for "
+                    "it, so replacing a file (upsert) fails; add the missing policy, scoped to this "
+                    "bucket, or drop upsert from the client",
+                )
         writable = public or int(bucket.get("policies") or 0) > 0
         if writable and not bucket.get("has_size_limit") and not bucket.get("has_type_list"):
             add(

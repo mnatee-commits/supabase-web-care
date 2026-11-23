@@ -149,7 +149,7 @@ unset WEBCARE_ACCESS_TOKEN
 - **Storage (`storage_buckets`)** reports buckets that are public without
   being listed in `expected_public_buckets` (medium), buckets where a policy
   lets anonymous visitors write files (medium) or read them although the
-  bucket is private (low), buckets with no size or type limit (low), and
+  bucket is private (low), buckets with no size or type limit (low), buckets where signed-in users may upload but not replace a file because a SELECT or UPDATE policy for that bucket is missing (low), and
   `storage.objects` policies that name no bucket and so apply to all of them.
   It reads the bucket list and facts about policies only. It reads no row of
   `storage.objects`, so it sees no file name and no file content. Like the
