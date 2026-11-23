@@ -34,7 +34,8 @@
             "required": ["check", "rule", "severity", "location"],
             "properties": {
               "check": {"type": "string"}, "rule": {"type": "string"},
-              "severity": {"enum": ["high", "medium", "low", "info"]}, "location": {"type": "string"}
+              "severity": {"enum": ["high", "medium", "low", "info"]}, "location": {"type": "string"},
+              "message": {"type": "string", "description": "added in schema_version 1.1"}
             }
           }
         },

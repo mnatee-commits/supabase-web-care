@@ -45,7 +45,7 @@ def _ref_error(value: str):
 
 
 def _env_error(value: str):
-    return None if value in ENVIRONMENTS else f"one of {', '.join(ENVIRONMENTS)}"
+    return None if value.lower() in ENVIRONMENTS else f"one of {', '.join(ENVIRONMENTS)}"
 
 
 def _real_error(value: str):
@@ -83,8 +83,9 @@ def build_entry(name: str, env: str, real: bool, project_ref: str = "", schemas=
     return "\n".join(lines) + "\n"
 
 
-def next_steps(name: str, project_ref: str, real: bool, lang: str = "en") -> str:
+def next_steps(name: str, project_ref: str, real: bool, lang: str = "en", env: str = "") -> str:
     approval = " --owner-approved" if real else ""
+    local = env == "local" and not project_ref
     if lang == "th":
         text = [
             "ขั้นต่อไป",
@@ -96,6 +97,12 @@ def next_steps(name: str, project_ref: str, real: bool, lang: str = "en") -> str
                 "   เลือกเฉพาะโปรเจกต์นี้ สิทธิ์ Database Read อย่างเดียว อายุสั้นที่สุด แล้วใส่ในตัวแปร WEBCARE_ACCESS_TOKEN",
                 f"   python -m webcare check --target {name} --via-api --profile full{approval}",
                 "   เพิกถอน token ทันทีเมื่อตรวจเสร็จ",
+            ]
+        if local:
+            text += [
+                "2. ตรวจฐานในเครื่อง: ใส่ connection string ของ role ตรวจแบบอ่านอย่างเดียวในตัวแปร WEBCARE_DATABASE_URL",
+                "   (ดูวิธีสร้าง role ใน sql/auditor-role.sql)",
+                f"   python -m webcare check --target {name}{approval}",
             ]
         if real:
             text.append("เป้าหมายนี้เก็บข้อมูลจริง ใส่ --owner-approved ได้ก็ต่อเมื่อเจ้าของอนุญาตด้วยคำพูดของตัวเองแล้วเท่านั้น")
@@ -110,6 +117,12 @@ def next_steps(name: str, project_ref: str, real: bool, lang: str = "en") -> str
             "   limited to this project, with Database Read only and the shortest expiry; put it in WEBCARE_ACCESS_TOKEN.",
             f"   python -m webcare check --target {name} --via-api --profile full{approval}",
             "   Delete the token as soon as the check is done.",
+        ]
+    if local:
+        text += [
+            "2. Check the local database: put the connection string of a read-only audit role in",
+            "   WEBCARE_DATABASE_URL (sql/auditor-role.sql shows how to make one).",
+            f"   python -m webcare check --target {name}{approval}",
         ]
     if real:
         text.append("This target holds real data: pass --owner-approved only after the owner has said yes in their own words.")
@@ -133,10 +146,12 @@ def run(path: Path, name: Optional[str], env: Optional[str], real: Optional[str]
         return _ask(prompt, ask, check, default)
 
     name = need(name, "Target name (e.g. staging)", _name_error, None)
-    env = need(env, "Environment: local, staging or production", _env_error, "production")
+    env = need(env, "Environment: local, staging or production", _env_error, "production").lower()
     # Real data unless the owner says otherwise: the guard applies when in doubt.
     real_answer = need(real, "Does this database hold real people's data? (yes/no)", _real_error, "yes")
     holds_real = real_answer.lower() not in _NO
+    if env == "local" and project_ref is None:
+        project_ref = ""  # a local stack (supabase start) has no project reference
     project_ref = need(project_ref, "Project reference (20 letters in the project's URL; empty to skip)", _ref_error, "")
     schemas = schemas or ["public"]
 
@@ -153,8 +168,8 @@ def run(path: Path, name: Optional[str], env: Optional[str], real: Optional[str]
     trial.write_text(before + entry, encoding="utf-8")
     try:
         load_targets(trial)
-    except Refusal:
-        trial.unlink()
+    except BaseException:  # a refusal, Ctrl-C or a disk error: leave no half-made file behind
+        trial.unlink(missing_ok=True)
         raise
     trial.replace(path)
-    return f"wrote target {name!r} to {path}\n\n" + next_steps(name, project_ref, holds_real, lang)
+    return f"wrote target {name!r} to {path}\n\n" + next_steps(name, project_ref, holds_real, lang, env)

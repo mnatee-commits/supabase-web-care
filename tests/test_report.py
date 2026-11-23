@@ -58,7 +58,7 @@ def test_the_summary_puts_first_things_first_and_never_hides_what_did_not_run():
     checks = [
         CheckResult(id="extra_live", title="t", status="FINDINGS", findings=[
             Finding("live", "default_table_privileges", "medium", "public", "x"),
-            Finding("live", "view_runs_as_owner", "medium", "public.v", "y"),
+            Finding("live", "view_runs_as_owner", "medium", "public.v", "anon and authenticated may read this view"),
             Finding("live", "invalid_index", "low", "public.i", "z")]),
         CheckResult(id="table_writes", title="t", status="FINDINGS", findings=[
             Finding("table_writes", "anon_write_without_rls", "high", "public.t", "w")]),
@@ -74,3 +74,20 @@ def test_the_summary_puts_first_things_first_and_never_hides_what_did_not_run():
                    lang="th").to_markdown()
     assert "ไม่พบปัญหาในการตรวจที่ได้ทำ" in clean and "ยังไม่ได้ตรวจ 1 จาก 1 หัวข้อ" in clean
     assert report.to_dict()["summary"]["first"][0]["rule"] == "anon_write_without_rls"
+
+
+def test_visitors_come_first_only_when_a_finding_reaches_them():
+    from webcare.model import CheckResult, Finding
+    from webcare.report import Report
+
+    check = CheckResult(id="extra_live", title="t", status="FINDINGS", findings=[
+        Finding("live", "auth_role_deprecated", "medium", "public.a", "uses auth.role()"),
+        Finding("live", "matview_readable_by_api_roles", "medium", "public.m", "anon may read every row"),
+        Finding("live", "realtime_messages_open_to_signed_in", "medium", "realtime.messages.p",
+                "ALL for authenticated with no condition"),
+        Finding("live", "view_runs_as_owner", "medium", "public.v", "authenticated may read this view"),
+        Finding("advisor", "unindexed_foreign_keys", "medium", "public.k", "foreign key without an index"),
+    ])
+    first = [f.rule for _, f in Report(checks=[check], source="s", target="t").first_findings(5)]
+    assert first[0] == "matview_readable_by_api_roles"
+    assert first[1:] == sorted(first[1:])  # the rest only by name: none of them reaches visitors

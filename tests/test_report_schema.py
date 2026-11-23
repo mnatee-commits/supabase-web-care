@@ -31,6 +31,10 @@ def problems(value, schema, path="$"):
         for key, sub in schema.get("properties", {}).items():
             if key in value:
                 found += problems(value[key], sub, f"{path}.{key}")
+        # A field the code writes but the schema does not describe: the schema must keep up.
+        if "properties" in schema:
+            for key in sorted(set(value) - set(schema["properties"])):
+                found.append(f"{path}.{key}: not described in the schema")
     if isinstance(value, list) and "items" in schema:
         for index, item in enumerate(value):
             found += problems(item, schema["items"], f"{path}[{index}]")
@@ -52,3 +56,15 @@ def test_the_validator_catches_a_broken_report():
     found = problems(broken, SCHEMA)
     assert any("missing schema_version" in p for p in found)
     assert any("'MAYBE' not in" in p for p in found)
+
+
+def test_the_validator_catches_a_field_the_schema_does_not_describe():
+    found = problems({"tool": "supabase-web-care", "surprise": 1}, SCHEMA)
+    assert "$.surprise: not described in the schema" in found
+
+
+def test_a_report_with_findings_lists_messages_first(tmp_path):
+    out = tmp_path / "o"
+    main(["check", "--repo", str(FIXTURES), "--sql-file", str(FIXTURES / "vulnerable.sql"), "--out-dir", str(out)])
+    report = json.loads((out / "report.json").read_text())
+    assert report["summary"]["first"] and all(item["message"] for item in report["summary"]["first"])

@@ -14,7 +14,8 @@ Within `schema_version` 1.x:
 - a check's `status` is always one of `PASS`, `FINDINGS`, `NOT_RUN`, `ERROR`;
 - a finding's `severity` is always one of `high`, `medium`, `low`, `info`.
 
-A change that breaks any of these raises the major number to 2. The test suite validates
+A change that breaks any of these raises the major number to 2; an added field raises the
+minor number (1.1 added `summary.first[].message`). The test suite validates
 real reports against the schema on every change.
 
 ## What to read
@@ -22,7 +23,7 @@ real reports against the schema on every change.
 | Field | Meaning |
 |---|---|
 | `summary.findings` | how many findings of each severity |
-| `summary.first` | the findings to act on first, in order |
+| `summary.first` | the findings to act on first, in order, with `message` since 1.1 |
 | `summary.not_checked` | every check that did not run or failed, with its reason |
 | `checks[]` | each check: `id`, `title`, `status`, `evidence`, `reason`, `findings[]`, `notes[]` |
 | `manual[]` | the items no script can settle; always `NOT_RUN` |

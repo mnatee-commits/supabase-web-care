@@ -7,6 +7,7 @@ did not run stays visible as NOT_RUN with its reason.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -93,14 +94,24 @@ TEXT = {
 }
 MAX_ROWS_PER_CHECK = 100
 # report.json's shape; see schema/report.schema.json. Fields are only added within 1.x.
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 FIRST_STEPS = 3
-# Rules whose findings reach visitors who are not signed in; they come first within a severity.
-_VISITOR_WORDS = ("anon", "public", "realtime", "secret", "jwt", "key", "password", "view_runs_as_owner")
+# Findings that reach visitors who are not signed in come first within a severity: rules
+# about them by name, credentials left in the source, and any finding that names the anon
+# role or PUBLIC (rules such as view_runs_as_owner cover both anon and signed-in users).
+_VISITOR_RULES = frozenset({
+    "storage_bucket_public", "realtime_table_without_rls", "realtime_messages_open",
+    "auth_signup_open", "auth_anonymous_signins", "ssl_not_enforced", "database_open_to_every_address",
+    "secdef_public_execute", "log_anon_rpc_unexpected",
+})
+_VISITOR_PREFIXES = ("anon_", "storage_anon_", "secdef_anon_")
+_VISITOR_ROLE = re.compile(r"\banon\b|\bPUBLIC\b")
 
 
-def _reaches_visitors(finding) -> bool:
-    return any(word in finding.rule for word in _VISITOR_WORDS)
+def _reaches_visitors(check, finding) -> bool:
+    return (check.id == "secrets" or finding.rule in _VISITOR_RULES
+            or finding.rule.startswith(_VISITOR_PREFIXES)
+            or bool(_VISITOR_ROLE.search(f"{finding.location} {finding.message}")))
 
 MAX_MESSAGE_CHARS = 280
 
@@ -156,7 +167,7 @@ class Report:
         ]
         ranked.sort(key=lambda pair: (
             SEVERITIES.index(pair[1].severity),
-            0 if _reaches_visitors(pair[1]) else 1,
+            0 if _reaches_visitors(*pair) else 1,
             pair[0].id, pair[1].rule, pair[1].location,
         ))
         return ranked[:limit]
@@ -174,7 +185,7 @@ class Report:
             "real_data": self.real_data,
             "first": [
                 {"check": check.id, "rule": finding.rule, "severity": finding.severity,
-                 "location": finding.location}
+                 "location": finding.location, "message": finding.message}
                 for check, finding in self.first_findings()
             ],
             "not_checked": [

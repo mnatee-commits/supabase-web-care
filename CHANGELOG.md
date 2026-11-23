@@ -3,6 +3,36 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.35.0
+Fixes from the fourth outside review (Gemini, 23 November 2026, of 1.26.0 to 1.34.0).
+- The real-data question at a terminal: a run from a `--snapshot` file no longer asks,
+  since nothing is contacted, unless the anonymous probe would reach the project, and then
+  it names the probe and nothing else. The probe is listed in the other routes too. The
+  question is written to stderr with the warning, so it never lands in redirected output,
+  and it is asked only when both stdin and stderr are a terminal.
+- The GitHub Action joins every value to its option with `=`, so a value that starts with
+  `-` stays a value; refuses a `sarif` other than true or false; and stops with exit 2 when
+  a `migrations` folder named on purpose does not exist, instead of leaving the SQL checks
+  out without a word.
+- "In short" puts visitors first by rule name, credentials in the source, or a finding
+  that names `anon` or `PUBLIC`, instead of loose words in rule names: `realtime` no longer
+  lifts the signed-in-only Realtime rule, and a materialized view readable by anon is lifted.
+- `report.json` `schema_version` 1.1: `summary.first[]` carries the finding's `message`.
+  The schema test now fails on a field the schema does not describe.
+- The credential scan skips `.webcare-output`, where the pre-commit hook writes its report.
+- `webcare init`: a local target is not asked for a project reference and gets next steps
+  for a direct connection; the environment answer is read in any case; the temporary file
+  is removed on any interruption, Ctrl-C included.
+
+Reviewed and left as is, with the reason:
+- Options switched on in `webcare.toml` (`checks = [...]`) were already listed in the
+  question: the file is applied before the question is asked. A test now holds this.
+- There is no `--db` flag: a connection string is read only from an environment variable,
+  so it never appears in shell history; the message names that variable.
+- The wording "the JWT secret in the answer is dropped" was already singular.
+- A project reference is 20 lower-case letters on Supabase; digits are not accepted on
+  purpose, so a mistyped reference is caught.
+
 ## 1.34.1
 - `extension_net_callable` no longer advises a REVOKE that cannot work: when schema `net`
   belongs to another role (on Supabase, `supabase_admin`), a REVOKE by the checking role

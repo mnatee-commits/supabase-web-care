@@ -34,6 +34,7 @@ SKIP_DIRS = frozenset(
         "coverage",
         "wheelhouse",
         "webcare-output",
+        ".webcare-output",  # the pre-commit hook writes its report here
     }
 )
 TITLE = "Credentials left in the source tree"

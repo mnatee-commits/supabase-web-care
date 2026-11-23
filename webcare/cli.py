@@ -389,13 +389,15 @@ _OPTIONAL_CALLS = (
 )
 
 
-def _confirm_real_data(args: argparse.Namespace, what: str) -> bool:
+def _confirm_real_data(args: argparse.Namespace, what: str, skip: Optional[set] = None) -> bool:
     """Before touching a target that holds real data, say what will happen and wait for a yes.
 
     Only at a terminal: in CI or from a script there is nobody to answer, so the usual
     refusal stands and --owner-approved remains the way to proceed.
     """
-    if getattr(args, "owner_approved", False) or not getattr(args, "target", None) or not sys.stdin.isatty():
+    # Both ends must be a terminal: the warning goes to stderr, and a person must see it.
+    if (getattr(args, "owner_approved", False) or not getattr(args, "target", None)
+            or not sys.stdin.isatty() or not sys.stderr.isatty()):
         return True
     try:
         target = get_target(Path(args.config), args.target)
@@ -403,7 +405,17 @@ def _confirm_real_data(args: argparse.Namespace, what: str) -> bool:
         return True  # reported, with its reason, by the checks themselves
     if not target.needs_owner_approval:
         return True
-    if getattr(args, "via_api", False):
+    probe = None
+    skip = set(getattr(args, "skip", []) or []) if skip is None else skip
+    if getattr(args, "key_env", None) and "probe" not in skip and target.rest:
+        probe = (f"HEAD requests to the Data API at {target.rest} with the public key in "
+                 f"{args.key_env}: row counts an anonymous visitor would see, no row")
+    if getattr(args, "snapshot", None) and not getattr(args, "via_api", False):
+        # A snapshot file is read from disk; only the anonymous probe would reach the project.
+        if probe is None:
+            return True
+        route, reads = "its public Data API", [probe]
+    elif getattr(args, "via_api", False):
         route = (f"the Management API of project {target.project_ref}, with the token in "
                  f"{getattr(args, 'token_env', api_snapshot.DEFAULT_TOKEN_ENV)}")
         reads = ["single SELECT statements to the read-only query endpoint: catalog facts and statistics, no table row"]
@@ -411,14 +423,18 @@ def _confirm_real_data(args: argparse.Namespace, what: str) -> bool:
     else:
         route = f"a direct connection from {getattr(args, 'db_env', 'WEBCARE_DATABASE_URL')} (the audit role, read-only session)"
         reads = ["single SELECT statements over the system catalog and statistics, no table row"]
+    if probe and reads != [probe]:
+        reads.append(probe)
     print(f"{target.describe()} holds production or real data.", file=sys.stderr)
     print(f"{what} will read it through {route}:", file=sys.stderr)
     for line in reads:
         print(f"  - {line}", file=sys.stderr)
     print("Nothing is written. Only go on if the owner has agreed to this check.", file=sys.stderr)
+    # The question goes to stderr too, so it never lands in redirected output.
+    print("Type yes to go on: ", end="", file=sys.stderr, flush=True)
     try:
-        answer = input("Type yes to go on: ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
+        answer = sys.stdin.readline().strip().lower()
+    except KeyboardInterrupt:
         answer = ""
     if answer in ("yes", "y", "ใช่"):
         args.owner_approved = True
@@ -970,7 +986,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         print(f"refused: {error}", file=sys.stderr)
         return EXIT_REFUSED
     plan.prepare(args, skip)
-    if "live" not in skip and not _confirm_real_data(args, "This check"):
+    if "live" not in skip and not _confirm_real_data(args, "This check", skip):
         return EXIT_REFUSED
     requested: set[str] = set()
     checks: list[CheckResult] = []

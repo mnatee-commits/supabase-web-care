@@ -40,6 +40,7 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.33 | Stable report.json: `schema_version` and a published JSON Schema | Test suite validates real reports |
 | 1.34 | Fixes from the third outside review: Realtime policies, materialized views, deleted migrations, parity group | The changed statements ran on a real project |
 | 1.34.1 | pg_net advice says when a REVOKE cannot work | Found on a real project |
+| 1.35 | Fixes from the fourth outside review: real-data question, Action inputs, In short order, report schema 1.1 | Tests run the Action's script |
 
 ## In progress
 

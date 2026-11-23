@@ -42,3 +42,23 @@ def test_a_person_is_asked_for_what_is_missing(tmp_path):
     assert target.data == "real" and "wrote target 'staging'" in message  # empty answer means yes
     with pytest.raises(Refusal):
         setup_init.run(tmp_path / "x.toml", None, None, None, None, None, "en", False)
+
+
+def test_a_local_target_is_not_asked_for_a_project_reference(tmp_path):
+    asked = []
+    answers = iter(["dev", "Local", "no"])
+    message = setup_init.run(tmp_path / "w.toml", None, None, None, None, None, "en", True,
+                             ask=lambda prompt: asked.append(prompt) or next(answers))
+    target = load_targets(tmp_path / "w.toml")["dev"]
+    assert target.env == "local" and target.project_ref in (None, "")
+    assert not any("Project reference" in prompt for prompt in asked)
+    assert "WEBCARE_DATABASE_URL" in message and "sql/auditor-role.sql" in message
+
+
+def test_an_interrupted_write_leaves_no_temporary_file(tmp_path, monkeypatch):
+    def interrupted(path):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(setup_init, "load_targets", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        setup_init.run(tmp_path / "w.toml", "dev", "local", "no", None, None, "en", False)
+    assert not list(tmp_path.glob(".*.new")) and not (tmp_path / "w.toml").exists()

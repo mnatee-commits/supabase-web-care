@@ -63,9 +63,16 @@ runs:
       run: |
         case "$WC_FAIL_ON" in high|medium|low|never) ;; *) echo "fail-on must be high, medium, low or never"; exit 2;; esac
         case "$WC_LANG" in en|th) ;; *) echo "lang must be en or th"; exit 2;; esac
-        args=(check --skip live --skip probe --repo "$WC_REPO" --fail-on "$WC_FAIL_ON" --lang "$WC_LANG" --out-dir webcare-output)
-        if [ -d "$WC_MIGRATIONS" ]; then args+=(--migrations "$WC_MIGRATIONS"); fi
-        if [ -n "$WC_BASELINE" ]; then args+=(--baseline "$WC_BASELINE"); fi
+        case "$WC_SARIF" in true|false) ;; *) echo "sarif must be true or false"; exit 2;; esac
+        # Values are joined to their option with "=", so one that starts with "-" stays a value.
+        args=(check --skip live --skip probe "--repo=$WC_REPO" "--fail-on=$WC_FAIL_ON" "--lang=$WC_LANG" --out-dir=webcare-output)
+        if [ -d "$WC_MIGRATIONS" ]; then
+          args+=("--migrations=$WC_MIGRATIONS")
+        elif [ "$WC_MIGRATIONS" != "supabase/migrations" ]; then
+          # A folder named on purpose but missing would leave the SQL checks out without a word.
+          echo "migrations folder not found: $WC_MIGRATIONS"; exit 2
+        fi
+        if [ -n "$WC_BASELINE" ]; then args+=("--baseline=$WC_BASELINE"); fi
         if [ -n "$WC_CHANGED_SINCE" ]; then args+=("--changed-since=$WC_CHANGED_SINCE"); fi
         if [ "$WC_SARIF" = "true" ]; then args+=(--sarif); fi
         PYTHONPATH="$GITHUB_ACTION_PATH" python -m webcare "${args[@]}"
