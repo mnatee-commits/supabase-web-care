@@ -18,7 +18,7 @@ def by_function(result):
 
 def test_each_kind_of_function_is_judged_from_its_files():
     result = edge_functions.run([EDGE])
-    assert result.status == "FINDINGS" and "4 Edge Functions" in result.evidence
+    assert result.status == "FINDINGS" and "6 Edge Functions" in result.evidence
     found = by_function(result)
     # verify_jwt off, service role, and the only "check" is inside a comment
     assert found["open-hook"] == [("edge_open_to_anyone", "high")]
@@ -29,6 +29,10 @@ def test_each_kind_of_function_is_judged_from_its_files():
     assert found["admin-task"] == [("edge_service_role_no_caller_check", "medium"), ("edge_cors_any_origin", "low")]
     # asks who the caller is before using the service role, and names its origin
     assert "whoami" not in found
+    # imports corsHeaders from a helper file that also holds an unused requireUser(): not a check
+    assert found["export-all"] == [("edge_service_role_no_caller_check", "medium")]
+    # calls the helper's guard under another name: that is a check
+    assert "my-profile" not in found
     assert any("admin-task" in note and "not named in config.toml" in note for note in result.notes)
     assert any("--no-verify-jwt" in note for note in result.notes)
 
@@ -38,7 +42,10 @@ def test_locations_point_at_the_line(monkeypatch):
     result = edge_functions.run([EDGE])
     locations = {finding.rule: finding.location for finding in result.findings}
     assert locations["edge_open_to_anyone"] == "supabase/functions/open-hook/index.ts:5"
-    assert locations["edge_cors_any_origin"] == "supabase/functions/_shared/cors.ts:3"
+    # code in a shared file is reported at the line that imports it, and named in the message
+    assert locations["edge_cors_any_origin"] == "supabase/functions/admin-task/index.ts:2"
+    cors = next(f for f in result.findings if f.rule == "edge_cors_any_origin")
+    assert "(in supabase/functions/_shared/cors.ts:3)" in cors.message
 
 
 def test_no_functions_is_not_run_and_a_missing_folder_is_an_error(tmp_path):
@@ -92,3 +99,23 @@ def test_sarif_points_at_the_function_file(tmp_path, monkeypatch):
     spots = {r["ruleId"]: r["locations"][0]["physicalLocation"] for r in results if r.get("locations")}
     place = spots["edge_functions/edge_open_to_anyone"]
     assert place["artifactLocation"]["uri"] == "supabase/functions/open-hook/index.ts" and place["region"]["startLine"] == 5
+
+
+def test_config_reaches_a_folder_named_on_purpose_when_supabase_functions_is_absent(tmp_path):
+    (tmp_path / "supabase").mkdir()
+    (tmp_path / "supabase" / "config.toml").write_text("[functions.open-hook]\nverify_jwt = false\n")
+    shutil.copytree(EDGE / "supabase" / "functions" / "open-hook", tmp_path / "edge" / "open-hook")
+    result = edge_functions.run([tmp_path], [tmp_path / "edge"])
+    assert [(f.rule, f.severity) for f in result.findings] == [("edge_open_to_anyone", "high")]
+
+
+def test_two_functions_sharing_a_helper_never_share_a_location(tmp_path):
+    from webcare import baseline
+
+    shared = tmp_path / "supabase" / "functions"
+    shutil.copytree(EDGE / "supabase" / "functions" / "_shared", shared / "_shared")
+    for name in ("first", "second"):
+        shutil.copytree(EDGE / "supabase" / "functions" / "admin-task", shared / name)
+    result = edge_functions.run([tmp_path])
+    keys = [baseline.key("edge_functions", f.rule, f.location) for f in result.findings]
+    assert len(keys) == 4 and len(set(keys)) == 4

@@ -74,6 +74,19 @@ def _fixed(rule: str, severity: str, message: str) -> Callable[[re.Match], Verdi
     return handle
 
 
+def _key(rule: str, severity: str, message: str) -> Callable[[re.Match], Verdict]:
+    """Like _fixed, for provider keys: a documentation example or a filler value is dropped."""
+    def handle(match: re.Match) -> Verdict:
+        value = match.group(0)
+        if re.search(r"example|sample|dummy|placeholder|your[-_]?key|changeme", value, re.IGNORECASE):
+            return None
+        if len(set(value[-16:].lower())) <= 3:  # xxxxxxxx, 00000000, abababab
+            return None
+        return rule, severity, f"{message} ({len(value)} characters)"
+
+    return handle
+
+
 def _jwt_payload(token: str) -> Optional[dict]:
     try:
         segment = token.split(".")[1]
@@ -269,28 +282,28 @@ RULES: tuple[Rule, ...] = (
     # Keys of services a Supabase app often calls. Formats as the providers publish them.
     Rule(
         re.compile(r"(?<![A-Za-z0-9_-])sk-ant-[A-Za-z0-9_-]{24,}"),
-        _fixed("anthropic_api_key", "high", "Anthropic API key"),
+        _key("anthropic_api_key", "high", "Anthropic API key"),
     ),
     Rule(
         re.compile(r"(?<![A-Za-z0-9_-])sk-(?:(?:proj|svcacct|admin)-[A-Za-z0-9_-]{24,}"
                    r"|[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20})"),
-        _fixed("openai_api_key", "high", "OpenAI API key"),
+        _key("openai_api_key", "high", "OpenAI API key"),
     ),
     Rule(
         re.compile(r"(?<![A-Za-z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}(?![0-9A-Za-z])"),
-        _fixed("aws_access_key_id", "medium", "AWS access key id (the secret key that goes with it is not checked for)"),
+        _key("aws_access_key_id", "medium", "AWS access key id (the secret key that goes with it is not checked for)"),
     ),
     Rule(
         re.compile(r"(?<![A-Za-z0-9_])(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,})"),
-        _fixed("github_token", "high", "GitHub token"),
+        _key("github_token", "high", "GitHub token"),
     ),
     Rule(
         re.compile(r"(?<![A-Za-z0-9_.-])SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}"),
-        _fixed("sendgrid_api_key", "high", "SendGrid API key"),
+        _key("sendgrid_api_key", "high", "SendGrid API key"),
     ),
     Rule(
         re.compile(r"(?<![A-Za-z0-9_-])AIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])"),
-        _fixed("google_api_key", "low",
+        _key("google_api_key", "low",
                "Google API key: public for Firebase or Maps when restricted, secret for Gemini and paid APIs"),
     ),
 )

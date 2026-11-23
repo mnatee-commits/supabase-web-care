@@ -3,6 +3,40 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.39.0
+Fixes from the fifth outside review (Gemini, 23 November 2026, of 1.34.1 to 1.38.0).
+- Edge Functions: `verify_jwt` from `supabase/config.toml` now reaches a folder named with
+  `--functions-dir` when `supabase/functions` does not exist (before, the setting was lost
+  and a function open to anyone was missed). A caller check in a shared helper file counts
+  only when the function calls what it imports from that file and that definition holds
+  the check; importing `corsHeaders` from a file that also holds an unused `requireUser()`
+  is no longer a check. A finding about code in a shared file is located at the function's
+  own import line and names the shared file in its message, so two functions sharing a
+  helper never share a baseline entry. `--changed-since` covers `--functions-dir`.
+- `secdef_takes_user_id`: helper functions are read without their comments too, a `--`
+  inside a string is no longer taken for a comment, and ids of integer types are covered.
+- `policy_any_signed_in`: the privilege must be held by a role the policy applies to, and
+  a column privilege counts.
+- New catalog checks for policies with no condition on a table an API role can reach:
+  `policy_always_true` (medium) for INSERT, UPDATE, DELETE and ALL, and
+  `policy_read_always_true` (low) for SELECT, which is often meant. pgrls reports these over
+  a direct connection; from a snapshot or through the API nothing did.
+- `slow_statement`: the thresholds are applied in the statement before the limit of five,
+  so fast statements called very often cannot push slow ones off the list.
+- Provider keys: documentation examples and filler values are dropped.
+- The skill's reference no longer says "seven queries", and its first step mentions
+  Edge Functions.
+
+The changed statements ran read-only on a real project before release (under a second).
+Counting column privileges brought back a policy the 1.38.0 rule had left out, on a table
+whose signed-in users may insert into some columns only: the reviewer was right, and the
+1.38.0 note calling that policy closed was wrong.
+
+Reviewed and left as is, with the reason:
+- Functions are matched by name in `secdef_takes_user_id`; two with the same name in
+  different schemas are not told apart. Stated in the check; a sign, not proof.
+- The manual's count of requests on the `--via-api` route was already right.
+
 ## 1.38.0
 Three additions suggested by reading other open-source checkers (written anew here).
 - New catalog check `secdef_takes_user_id` (medium): a `SECURITY DEFINER` function an API

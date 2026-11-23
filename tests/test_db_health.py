@@ -39,6 +39,9 @@ def test_the_statement_never_selects_the_text_of_a_statement():
     sql = db_health.build_sql()
     assert "pg_stat_statements" in sql and "queryid" in sql
     assert not re.search(r"\bs\.query\b", sql) and "s.*" not in sql
+    # the thresholds sit before the limit, so busy fast statements cannot crowd slow ones out
+    inner = sql[sql.index("s.queryid is not null"):]
+    assert inner.index("s.calls >= 20") < inner.index("limit 5") and "s.mean_exec_time >= 1000.0" in inner
 
 
 def test_connections_size_versions_and_slow_statements():

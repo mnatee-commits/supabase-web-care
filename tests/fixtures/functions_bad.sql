@@ -143,3 +143,21 @@ create table public.notes_rpc_only (id int primary key, user_id uuid);
 alter table public.notes_rpc_only enable row level security;
 revoke all on public.notes_rpc_only from anon, authenticated;
 create policy signed_in_add on public.notes_rpc_only for insert to authenticated with check (auth.uid() is not null);
+
+-- A helper whose only mention of auth.uid() is in a comment asks nobody; a function that
+-- relies on it is still open. Its id is a number, not a uuid.
+create function private.write_log(note text) returns void language plpgsql set search_path = ''
+as $$ begin
+  -- TODO: record auth.uid() here
+  null;
+end $$;
+create function public.notes_by_member(member_id bigint) returns int
+language plpgsql security definer set search_path = ''
+as $$ begin perform private.write_log('read'); return member_id::int; end $$;
+revoke all on function public.notes_by_member(bigint) from public, anon;
+grant execute on function public.notes_by_member(bigint) to authenticated;
+
+-- Policies with no condition: one the signed-in users can use, one on a table they cannot touch.
+create policy all_open on public.notes for delete to authenticated using (true);
+grant delete on public.notes to authenticated;
+create policy all_open on public.notes_rpc_only for all to authenticated using (true) with check (true);

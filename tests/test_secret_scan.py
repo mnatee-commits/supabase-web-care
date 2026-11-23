@@ -166,3 +166,9 @@ def test_words_that_only_look_like_keys_are_left_alone():
                  "class=\"desk-ant-" + "b" * 30 + "\"", "MAKIAABCDEFGHIJKLMNOPQ", "xAIza" + "c" * 35,
                  "sk-proj-short", "MSG.hello.world"):
         assert rules(text) == {}, text
+
+
+def test_documented_examples_and_filler_values_are_not_keys():
+    for text in ("AK" + "IA" + "IOSFODNN7EXAMPLE", "sk-" + "proj-" + "x" * 32, "sk-" + "ant-" + "0" * 40,
+                 "gh" + "p_" + "ab" * 20, "AI" + "za" + "X" * 35):
+        assert rules(text) == {}, text

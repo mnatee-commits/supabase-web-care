@@ -1002,7 +1002,8 @@ def cmd_check(args: argparse.Namespace) -> int:
             changed = set()
             for repo in repos:
                 changed |= changes.changed_files(repo, args.changed_since)
-            for extra in ([Path(args.migrations)] if args.migrations else []) + [Path(p) for p in args.sql_file]:
+            for extra in ([Path(args.migrations)] if args.migrations else []) + [Path(p) for p in args.sql_file] + [
+                    Path(p) for p in args.functions_dir]:
                 if extra.exists():
                     changed |= changes.changed_files(extra, args.changed_since)
         except Refusal as refusal:

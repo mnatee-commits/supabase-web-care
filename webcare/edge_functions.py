@@ -73,6 +73,7 @@ class EdgeFunction:
     name: str
     directory: Path
     files: list[Path] = field(default_factory=list)  # its own code, then local files it imports
+    own: int = 0  # how many of `files` are its own
     verify_jwt: Optional[bool] = None  # None: not stated in config.toml
 
 
@@ -128,6 +129,7 @@ def discover(repos: Iterable[Path], extra_dirs: Iterable[Path] = ()) -> tuple[li
     configs: list[Path] = []
     notes: list[str] = []
     roots: list[tuple[Path, dict[str, bool]]] = []
+    merged: dict[str, bool] = {}  # every config.toml read, for folders named with --functions-dir
     for repo in repos:
         config = repo / "supabase" / "config.toml"
         settings: dict[str, bool] = {}
@@ -135,15 +137,13 @@ def discover(repos: Iterable[Path], extra_dirs: Iterable[Path] = ()) -> tuple[li
             try:
                 settings = _config_settings(config)
                 configs.append(config)
+                merged.update(settings)
             except (tomllib.TOMLDecodeError, OSError, UnicodeDecodeError) as error:
                 notes.append(f"{_display(config)} could not be read ({type(error).__name__}); verify_jwt is not known")
         folder = repo / "supabase" / "functions"
         if folder.is_dir():
             roots.append((folder, settings))
     known = {root.resolve() for root, _ in roots}
-    merged: dict[str, bool] = {}
-    for _, settings in roots:
-        merged.update(settings)
     for folder in extra_dirs:
         if folder.resolve() not in known:
             roots.append((folder, merged))
@@ -157,7 +157,7 @@ def discover(repos: Iterable[Path], extra_dirs: Iterable[Path] = ()) -> tuple[li
                 continue
             functions.append(EdgeFunction(
                 name=directory.name, directory=directory,
-                files=_with_local_imports(own, folder), verify_jwt=settings.get(directory.name),
+                files=_with_local_imports(own, folder), own=len(own), verify_jwt=settings.get(directory.name),
             ))
     return functions, configs, notes
 
@@ -170,17 +170,84 @@ def _first(pattern: "re.Pattern[str]", texts: list[tuple[Path, str]]) -> Optiona
     return None
 
 
+_IMPORT = re.compile(
+    r"import\s+(?:type\s+)?(?P<names>[^;'\"`]*?)\s+from\s*[\"'`](?P<path>\.\.?/[^\"'`\n]*)[\"'`]", re.DOTALL
+)
+_EXPORT_START = re.compile(r"^\s*export\s", re.MULTILINE)
+
+
+def _imported_names(own_text: str, imported: Path, importer: Path) -> list[tuple[str, str]]:
+    """What the importer takes from `imported`: (the name it calls, the name the file exports)."""
+    names: list[tuple[str, str]] = []
+    for match in _IMPORT.finditer(own_text):
+        target = (importer.parent / match.group("path")).resolve()
+        if imported.resolve() not in (target, *(target.with_suffix(suffix) for suffix in CODE_SUFFIXES)):
+            continue
+        for part in re.split(r"[{},]", match.group("names")):
+            part = part.strip()
+            if not part or part == "*":
+                continue
+            words = part.replace("* as ", "").split()
+            names.append((words[-1], words[0]))  # "a as b": called as b, defined as a
+    return names
+
+
+def _definition(text: str, name: str) -> str:
+    """The exported block that defines `name` in a helper file: up to the next export."""
+    match = re.search(
+        r"^\s*export\s+(?:default\s+)?(?:async\s+)?(?:function\s*\*?|const|let|var|class)\s+" + re.escape(name) + r"\b",
+        text, re.MULTILINE,
+    )
+    if not match:
+        return ""
+    following = _EXPORT_START.search(text, match.end())
+    return text[match.start(): following.start() if following else len(text)]
+
+
 def judge(function: EdgeFunction) -> list[Finding]:
     texts = [(path, _without_comments(_read(path))) for path in function.files]
+    own_count = function.own or len(texts)
+    own, helpers = texts[:own_count], texts[own_count:]
     entry = function.files[0] if function.files else function.directory
     service = _first(_SERVICE_ROLE, texts)
-    verifies = _first(_VERIFIES_CALLER, texts)
-    reads = _first(_READS_CREDENTIAL, texts)
+    reads = _first(_READS_CREDENTIAL, own)
     cors = _first(_CORS_ANY, texts)
+    # A caller check in a helper file counts only when the function calls something it
+    # imports from that file whose own definition holds the check: a requireUser() that
+    # sits next to the corsHeaders it imports, and is never called, checks nobody.
+    verifies = _first(_VERIFIES_CALLER, own)
+    for helper_path, helper_text in helpers:
+        for own_path, own_text in own:
+            for name, exported in _imported_names(own_text, helper_path, own_path):
+                # a use that is not the import line itself: name(...) or name.method(...)
+                uses = [m for m in re.finditer(r"(?<![\w.$])" + re.escape(name) + r"\s*[(.]", own_text)]
+                if not uses:
+                    continue
+                block = _definition(helper_text, exported)
+                spot = (own_path, own_text.count("\n", 0, uses[0].start()) + 1)
+                if verifies is None and _VERIFIES_CALLER.search(block):
+                    verifies = spot
+                if reads is None and _READS_CREDENTIAL.search(block):
+                    reads = spot
     findings: list[Finding] = []
 
     def at(spot: Optional[tuple[Path, int]]) -> str:
-        return f"{_display(spot[0])}:{spot[1]}" if spot else f"{_display(entry)}:1"
+        # Always inside the function's own folder, so two functions that share a helper file
+        # never share a location (a baseline entry for one must not cover the other).
+        if spot and function.directory.resolve() in spot[0].resolve().parents:
+            return f"{_display(spot[0])}:{spot[1]}"
+        if spot:
+            for own_path, own_text in own:
+                mention = re.search(re.escape(spot[0].stem) + r"(?:\.[a-z]+)?[\"'`]", own_text)
+                if mention:
+                    return f"{_display(own_path)}:{own_text.count(chr(10), 0, mention.start()) + 1}"
+        return f"{_display(entry)}:1"
+
+    def where(spot: Optional[tuple[Path, int]]) -> str:
+        """Named in the message when the code sits in a shared file, since the location does not."""
+        if spot and function.directory.resolve() not in spot[0].resolve().parents:
+            return f" (in {_display(spot[0])}:{spot[1]})"
+        return ""
 
     rights = "with the service role key, which passes row-level security" if service else "with its own rights"
     if function.verify_jwt is False:
@@ -202,14 +269,15 @@ def judge(function: EdgeFunction) -> list[Finding]:
                 if reads else "no caller check was found in its files")
         findings.append(Finding(
             SOURCE, "edge_service_role_no_caller_check", "low" if reads else "medium", at(service),
-            f"function {function.name} uses the service role key and {seen}. The platform's JWT check lets in "
+            f"function {function.name} uses the service role key{where(service)} and {seen}. The platform's JWT check lets in "
             "every signed-in user, and the legacy anon key is a valid JWT too, so each of them could run it with "
             "full rights. Find out who is calling (auth.getUser or getClaims) and check what they may do",
         ))
     if cors:
         findings.append(Finding(
             SOURCE, "edge_cors_any_origin", "low" if service else "info", at(cors),
-            f"function {function.name} answers browsers on any website (Access-Control-Allow-Origin: *). "
+            f"function {function.name} answers browsers on any website (Access-Control-Allow-Origin: *)"
+            f"{where(cors)}. "
             "Name the site's own origins instead, unless every website is meant to call it",
         ))
     return findings

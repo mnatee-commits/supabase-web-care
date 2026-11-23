@@ -513,7 +513,8 @@ select jsonb_build_object(
           from unnest(p.proargnames) with ordinality as a(name, i)
           join unnest(coalesce(p.proallargtypes, p.proargtypes::oid[])) with ordinality as t(typ, i) using (i)
           where coalesce(p.proargmodes[a.i], 'i') in ('i', 'b')
-            and t.typ in ('uuid'::regtype, 'text'::regtype, 'character varying'::regtype)
+            and t.typ in ('uuid'::regtype, 'text'::regtype, 'character varying'::regtype,
+                          'bigint'::regtype, 'integer'::regtype, 'smallint'::regtype)
             and a.name ~* '^(p|in|arg|v|target|the)?_*(target_)?(user|usr|owner|profile|member|account|staff|person|author|customer)_?(id|uuid|uid)$'
         ) ids
         where n.nspname = any(array['public']::text[])
@@ -529,7 +530,7 @@ select jsonb_build_object(
                 and pg_catalog.has_schema_privilege('authenticated', n.oid, 'USAGE')))
           and regexp_replace(
                 p.prosrc,
-                '--[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/', '', 'g'
+                '(''(?:[^'']|'''')*'')|--[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/', '\1', 'g'
               ) !~* 'auth\.(uid|jwt)\s*\(|request\.jwt'
           and not pg_catalog.texticregexeq(
                 p.prosrc,
@@ -541,7 +542,9 @@ select jsonb_build_object(
                     join pg_catalog.pg_namespace gn on gn.oid = p.pronamespace
                     where gn.nspname !~ '^pg_' and gn.nspname not in ('information_schema', 'auth')
                       and pg_catalog.texticregexeq(
-                            p.prosrc,
+                            regexp_replace(
+                              p.prosrc,
+                              '(''(?:[^'']|'''')*'')|--[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/', '\1', 'g'),
                             'auth\.(uid|jwt)\s*\(|request\.jwt')
                     union
                     select regexp_replace(p.proname::text, '([^a-z0-9_])', '\\\1', 'gi')
@@ -556,7 +559,9 @@ select jsonb_build_object(
                               join pg_catalog.pg_namespace gn on gn.oid = p.pronamespace
                               where gn.nspname !~ '^pg_' and gn.nspname not in ('information_schema', 'auth')
                                 and pg_catalog.texticregexeq(
-                                      p.prosrc,
+                                      regexp_replace(
+                                        p.prosrc,
+                                        '(''(?:[^'']|'''')*'')|--[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/', '\1', 'g'),
                                       'auth\.(uid|jwt)\s*\(|request\.jwt')
                             ) || ')\s*\(')
                   ) k
@@ -599,7 +604,88 @@ select jsonb_build_object(
             from unnest(array['anon', 'authenticated']) r(role_name),
                  unnest(case p.cmd when 'ALL' then array['SELECT', 'INSERT', 'UPDATE', 'DELETE']
                                    else array[p.cmd] end) x(privilege)
-            where pg_catalog.has_table_privilege(r.role_name, t.oid, x.privilege))
+            where (r.role_name = any(p.roles) or 'public' = any(p.roles))
+              and case when x.privilege = 'DELETE'
+                       then pg_catalog.has_table_privilege(r.role_name, t.oid, x.privilege)
+                       else pg_catalog.has_any_column_privilege(r.role_name, t.oid, x.privilege) end)
+        order by 1
+        limit 500
+      ) q
+    ), '[]'::jsonb),
+    'policy_always_true', coalesce((
+      select jsonb_agg(to_jsonb(q)) from (
+        select
+          quote_ident(p.schemaname) || '.' || quote_ident(p.tablename) || '.' || quote_ident(p.policyname)
+            as location,
+          p.cmd || ' for ' || array_to_string(p.roles, ', ') || ': '
+            || concat_ws(' and ',
+                 case when c.using_true then 'USING (true)' end,
+                 case when c.check_true then 'WITH CHECK (true)' end)
+            || ', so every row is open to them. Add a condition, or declare the table as public on purpose'
+            as detail
+        from pg_catalog.pg_policies p
+        cross join lateral (
+          select
+            translate(lower(coalesce(p.qual, '')), E' ()\n\t', '') = 'true' as using_true,
+            translate(lower(coalesce(p.with_check, '')), E' ()\n\t', '') = 'true' as check_true
+        ) c
+        cross join lateral (
+          select (quote_ident(p.schemaname) || '.' || quote_ident(p.tablename))::regclass as oid
+        ) t
+        where p.schemaname = any(array['public']::text[])
+          and p.permissive = 'PERMISSIVE'
+          and (c.using_true or c.check_true)
+          and p.cmd <> 'SELECT'
+          and pg_catalog.to_regrole('anon') is not null
+          and pg_catalog.to_regrole('authenticated') is not null
+          and exists (
+            select 1
+            from unnest(array['anon', 'authenticated']) r(role_name),
+                 unnest(case p.cmd when 'ALL' then array['SELECT', 'INSERT', 'UPDATE', 'DELETE']
+                                   else array[p.cmd] end) x(privilege)
+            where (r.role_name = any(p.roles) or 'public' = any(p.roles))
+              and case when x.privilege = 'DELETE'
+                       then pg_catalog.has_table_privilege(r.role_name, t.oid, x.privilege)
+                       else pg_catalog.has_any_column_privilege(r.role_name, t.oid, x.privilege) end)
+        order by 1
+        limit 500
+      ) q
+    ), '[]'::jsonb),
+    'policy_read_always_true', coalesce((
+      select jsonb_agg(to_jsonb(q)) from (
+        select
+          quote_ident(p.schemaname) || '.' || quote_ident(p.tablename) || '.' || quote_ident(p.policyname)
+            as location,
+          p.cmd || ' for ' || array_to_string(p.roles, ', ') || ': '
+            || concat_ws(' and ',
+                 case when c.using_true then 'USING (true)' end,
+                 case when c.check_true then 'WITH CHECK (true)' end)
+            || ', so they read every row. Fine if the table is public on purpose; otherwise add a condition'
+            as detail
+        from pg_catalog.pg_policies p
+        cross join lateral (
+          select
+            translate(lower(coalesce(p.qual, '')), E' ()\n\t', '') = 'true' as using_true,
+            translate(lower(coalesce(p.with_check, '')), E' ()\n\t', '') = 'true' as check_true
+        ) c
+        cross join lateral (
+          select (quote_ident(p.schemaname) || '.' || quote_ident(p.tablename))::regclass as oid
+        ) t
+        where p.schemaname = any(array['public']::text[])
+          and p.permissive = 'PERMISSIVE'
+          and c.using_true
+          and p.cmd = 'SELECT'
+          and pg_catalog.to_regrole('anon') is not null
+          and pg_catalog.to_regrole('authenticated') is not null
+          and exists (
+            select 1
+            from unnest(array['anon', 'authenticated']) r(role_name),
+                 unnest(case p.cmd when 'ALL' then array['SELECT', 'INSERT', 'UPDATE', 'DELETE']
+                                   else array[p.cmd] end) x(privilege)
+            where (r.role_name = any(p.roles) or 'public' = any(p.roles))
+              and case when x.privilege = 'DELETE'
+                       then pg_catalog.has_table_privilege(r.role_name, t.oid, x.privilege)
+                       else pg_catalog.has_any_column_privilege(r.role_name, t.oid, x.privilege) end)
         order by 1
         limit 500
       ) q

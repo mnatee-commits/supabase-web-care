@@ -28,7 +28,7 @@ def test_every_rule_in_the_code_has_a_thai_explanation():
 
     source = "\n".join(path.read_text() for path in (ROOT / "webcare").glob("*.py"))
     rules = set(re.findall(r'"([a-z][a-z0-9_]+)",\s*(?:"(?:high|medium|low|info)"|severity|"high" if|"medium" if|"low" if)', source))
-    rules |= set(re.findall(r'rule="([a-z_]+)"', source)) | set(re.findall(r'_fixed\("([a-z_]+)"', source))
+    rules |= set(re.findall(r'rule="([a-z_]+)"', source)) | set(re.findall(r'_(?:fixed|key)\("([a-z_]+)"', source))
     rules |= {check.id for check in live.load_extra_checks()}
     rules |= {f"{role}_{suffix}" for role in ("anon", "authenticated")
               for suffix in ("write_without_rls", "write_undeclared", "writes_not_declared")}

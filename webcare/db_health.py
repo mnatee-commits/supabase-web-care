@@ -50,14 +50,20 @@ END_OF_LIFE_WARNING_DAYS = 180
 # Read through query_to_xml because the view's schema differs between installations
 # (`extensions` on Supabase, `public` elsewhere) and a name that does not exist would fail
 # the whole statement. Counts and timings only: the `query` column is never selected.
-_STATEMENTS_INNER = (
-    "select jsonb_agg(to_jsonb(q))::text as j from ("
-    "select s.queryid::text as query_id, s.calls, round(s.total_exec_time::numeric) as total_ms, "
-    "round(s.mean_exec_time::numeric, 1) as mean_ms, s.rows "
-    "from %s s where s.queryid is not null and s.dbid = "
-    "(select d.oid from pg_catalog.pg_database d where d.datname = current_database()) "
-    f"order by s.total_exec_time desc limit {TOP_STATEMENTS}) q"
-)
+# The thresholds are applied here, before the limit: taking the top few by total time first
+# would let fast statements called millions of times push the slow ones off the list.
+
+
+def _statements_inner(t: "Thresholds") -> str:
+    return (
+        "select jsonb_agg(to_jsonb(q))::text as j from ("
+        "select s.queryid::text as query_id, s.calls, round(s.total_exec_time::numeric) as total_ms, "
+        "round(s.mean_exec_time::numeric, 1) as mean_ms, s.rows "
+        "from %s s where s.queryid is not null and s.dbid = "
+        "(select d.oid from pg_catalog.pg_database d where d.datname = current_database()) "
+        f"and s.calls >= {int(t.slow_calls)} and s.mean_exec_time >= {float(t.slow_mean_ms)} "
+        f"order by s.total_exec_time desc limit {TOP_STATEMENTS}) q"
+    )
 
 
 @dataclass(frozen=True)
@@ -158,7 +164,8 @@ def build_sql(t: Thresholds = DEFAULT) -> str:
   'sequences_unreadable', (select count(*) from pg_catalog.pg_sequence s
                              join pg_catalog.pg_class c on c.oid = s.seqrelid
                              join pg_catalog.pg_namespace n on n.oid = c.relnamespace
-                            where not s.seqcycle and n.nspname !~ '^pg_' and n.nspname not in ({skipped})
+                            where not s.seqcycle and s.seqincrement > 0
+                              and n.nspname !~ '^pg_' and n.nspname not in ({skipped})
                               and c.relkind = 'S'
                               and not (case when c.relkind = 'S'
                                             then pg_catalog.has_sequence_privilege(c.oid, 'SELECT, USAGE') end)),
@@ -183,7 +190,7 @@ def build_sql(t: Thresholds = DEFAULT) -> str:
   'statements', (select case
       when r.rel is not null and pg_catalog.has_table_privilege(r.rel, 'SELECT')
       then coalesce(((xpath('/row/j/text()', pg_catalog.query_to_xml(
-             pg_catalog.format('{_STATEMENTS_INNER}', r.rel), false, true, '')))[1])::text::jsonb, '[]'::jsonb)
+             pg_catalog.format('{_statements_inner(t)}', r.rel), false, true, '')))[1])::text::jsonb, '[]'::jsonb)
       end
       from (select (select pg_catalog.format('%I.pg_stat_statements', n.nspname)
                       from pg_catalog.pg_extension e
@@ -315,7 +322,7 @@ def judge(result: CheckResult, report: dict, t: Thresholds = DEFAULT, today: Opt
             if mean >= t.slow_mean_ms and calls >= t.slow_calls:
                 add("slow_statement", "low", f"query id {row.get('query_id')}",
                     f"takes {mean:,.0f} ms on average over {calls:,} calls ({float(row.get('total_ms') or 0) / 1000:,.0f} s "
-                    "in total), among the statements that use the most time. Find this id under Query "
+                    "in total), among the slow statements that use the most time. Find this id under Query "
                     "Performance in the dashboard; the statement's text was not read")
         if not report.get("sees_other_sessions"):
             result.notes.append(
