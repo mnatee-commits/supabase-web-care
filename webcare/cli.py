@@ -24,7 +24,7 @@ from typing import Optional, Sequence
 
 from . import (
     __version__, advisors, anon_probe, api_snapshot, auth_config, backups, baseline, changes, data_api, db_health, functions_static, health, inventory, live, logs, pgrls_runner, secret_scan,
-    focus, parity, sarif, snapshot, storage_buckets, table_writes,
+    focus, parity, platform, sarif, snapshot, storage_buckets, table_writes,
 )
 from .model import ERROR, NOT_RUN, CheckResult, Refusal, severity_at_least
 from .report import DEFAULT_LANGUAGE, LANGUAGE_ENV, LANGUAGES, Report
@@ -51,6 +51,7 @@ TITLES = {
     "db_health": db_health.TITLE,
     "data_api": data_api.TITLE,
     "parity": parity.TITLE,
+    "platform": platform.TITLE,
     "advisors_performance": advisors.PERFORMANCE_TITLE,
     "anon_probe": "What an anonymous visitor can read",
 }
@@ -159,6 +160,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--changed-since", metavar="REF",
         help="file checks only look at what changed since this git revision (e.g. HEAD~1, main); "
         "database checks still run in full",
+    )
+    check.add_argument(
+        "--with-platform", action="store_true",
+        help="with --via-api, also read SSL enforcement and network restrictions (two GETs; "
+        "beta endpoints on Supabase's side)",
     )
     check.add_argument(
         "--with-data-api", action="store_true",
@@ -482,6 +488,7 @@ def _snapshot_checks(
                     ("advisors_performance", args.with_performance),
                     ("data_api", args.with_data_api),
                     ("parity", bool(args.parity)),
+                    ("platform", args.with_platform),
                 )
                 if asked
             ]
@@ -564,6 +571,21 @@ def _snapshot_checks(
                 )
             except Refusal as refusal:
                 failed = CheckResult(id="parity", title=parity.TITLE, status=ERROR)
+                failed.reason = str(refusal)
+                results.append(failed)
+        if args.with_platform:
+            try:
+                results.append(
+                    platform.run(
+                        target,
+                        lambda: api_snapshot.platform_setting("ssl-enforcement", target, args.owner_approved, args.token_env),
+                        lambda: api_snapshot.platform_setting("network-restrictions", target, args.owner_approved, args.token_env),
+                        f"SSL enforcement and network restrictions of project {target.project_ref}, read "
+                        "through the Management API",
+                    )
+                )
+            except Refusal as refusal:
+                failed = CheckResult(id="platform", title=platform.TITLE, status=ERROR)
                 failed.reason = str(refusal)
                 results.append(failed)
         if args.with_data_api:
@@ -952,6 +974,9 @@ def cmd_check(args: argparse.Namespace) -> int:
         checks.append(_not_run("storage_buckets", "buckets are read through --via-api or a database connection"))
     if not any(check.id == "table_writes" for check in checks):
         checks.append(_not_run("table_writes", "table privileges are read through --via-api or a database connection"))
+    if not any(check.id == "platform" for check in checks):
+        reason = platform.NOT_ASKED if args.via_api else "platform settings are only read with --via-api --with-platform"
+        checks.append(_not_run("platform", reason))
     if not any(check.id == "parity" for check in checks):
         reason = (parity.NOT_ASKED if not args.parity
                   else "a parity check needs a database connection or --via-api")

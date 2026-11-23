@@ -48,6 +48,7 @@ Full manual: [MANUAL.md](MANUAL.md) (English) Â· [README_TH.md](README_TH.md) (à
 | Supabase's own security lints (Security Advisor) | Management API, opt-in |
 | Database health: invalid indexes, bloat, transaction-ID age, idle sessions, sequences near their limit | database or Management API |
 | Supabase's Performance Advisor | Management API, opt-in |
+| SSL enforcement and network restrictions of the database | Management API, opt-in |
 | What an anonymous visitor can read (HEAD requests only) | Data API |
 | What differs between two environments (`inventory`, then `compare`) | database or Management API |
 | What changed in a database since a saved inventory (`--parity`) | database or Management API |

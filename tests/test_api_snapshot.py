@@ -122,6 +122,16 @@ class FakeManagementApi(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"result": type(self).log_rows} if status == 200 else {"message": "no"}).encode())
             return
+        if self.path in (f"/v1/projects/{REF}/ssl-enforcement", f"/v1/projects/{REF}/network-restrictions"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            answer = ({"currentConfig": {"database": False}, "appliedSuccessfully": True}
+                      if self.path.endswith("ssl-enforcement") else
+                      {"entitlement": "allowed", "config": {"dbAllowedCidrs": ["0.0.0.0/0"], "dbAllowedCidrsV6": ["::/0"]},
+                       "status": "applied"})
+            self.wfile.write(json.dumps(answer).encode())
+            return
         if self.path == f"/v1/projects/{REF}/postgrest":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -513,3 +523,16 @@ def test_data_api_settings_keep_only_the_allowlist(api, tmp_path, capsys, monkey
     assert found == [("served_schema_unchecked", "schema reports")]
     assert "super-secret-jwt-value-never-kept" not in text and "jwt_secret" not in text
     assert "row cap per request: 1000" in " ".join(checks["data_api"]["notes"])
+
+
+def test_platform_settings_are_read_only_when_asked(api, tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("WEBCARE_DATABASE_URL", raising=False)
+    config = tmp_path / "webcare.toml"
+    config.write_text(f'[[target]]\nname = "staging"\nenv = "staging"\ndata = "synthetic"\nproject_ref = "{REF}"\n')
+    api.seen.clear()
+    code, checks, _ = run_cli(tmp_path, capsys, "--via-api", "--with-platform", "--target", "staging",
+                              "--config", str(config))
+    gets = [path for method, path, _, _ in api.seen if method == "GET"]
+    assert gets == [f"/v1/projects/{REF}/ssl-enforcement", f"/v1/projects/{REF}/network-restrictions"]
+    found = {(f["rule"], f["severity"]) for f in checks["platform"]["findings"]}
+    assert found == {("ssl_not_enforced", "medium"), ("database_open_to_every_address", "low")}

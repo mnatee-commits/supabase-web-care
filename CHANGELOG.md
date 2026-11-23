@@ -3,6 +3,13 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.27.0
+- `--with-platform`: two GETs, of SSL enforcement and network restrictions. SSL off is a
+  finding (medium; high for real data); direct connections open to every address are low.
+  Both endpoints are beta on Supabase's side, so an answer in an unknown shape is reported
+  as not judged, never as safe. New focus area `platform`; `checks = ["platform"]` in the
+  target file. Not yet called against a real project.
+
 ## 1.26.0
 - Storage, bucket by bucket: a bucket where signed-in users may upload but not replace a
   file (no SELECT or UPDATE policy naming that bucket) is a low finding. The table-wide

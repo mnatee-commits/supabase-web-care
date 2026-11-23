@@ -29,6 +29,8 @@ TITLES_TH = {
     "advisors": "ผลตรวจความปลอดภัยของ Supabase เอง (Security Advisor)",
     "advisors_performance": "ผลตรวจประสิทธิภาพของ Supabase เอง (Performance Advisor)",
     "data_api": "การตั้งค่า Data API: schema ที่เปิดให้เรียก",
+    "platform": "การตั้งค่าแพลตฟอร์ม: บังคับ SSL และจำกัด IP ที่ต่อฐานได้",
+    "parity": "เทียบกับรายการที่บันทึกไว้: อะไรเปลี่ยนไปตั้งแต่ครั้งก่อน",
     "db_health": "สุขภาพฐาน: index เสีย ตารางบวม อายุธุรกรรม เซสชันค้าง sequence ใกล้เต็ม",
     "auth_config": "การตั้งค่าการล็อกอิน (Supabase Auth)",
     "health_cron": "งานตั้งเวลา (pg_cron) ที่ล้มหรือหยุดรัน",
