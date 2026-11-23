@@ -3,6 +3,17 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.31.0
+- `webcare init` writes a target into webcare.toml from four answers: a name, local,
+  staging or production, whether it holds real people's data (yes when not answered, so
+  the owner-approval guard applies), and the project reference. Asks at a terminal; takes
+  flags from an AI assistant. The whole file is checked before it is replaced, a taken
+  name is refused, and no key is asked for. It prints the next steps, including how to make
+  a narrow access token.
+- The skill gains "First run with someone new to this": the same questions one at a time,
+  then `init`, a file check, how the person makes a token themselves (never pasted into
+  the chat), the database check, and the "In short" page explained first.
+
 ## 1.30.0
 - report.md opens with "In short": how many problems, the three to act on first, and
   every check that did not run, with a reminder that no result certifies a safe site.

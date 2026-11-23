@@ -35,6 +35,7 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.28 | Thai explanation of every finding in Thai reports | Test suite |
 | 1.29 | GitHub Action and pre-commit hooks | The action's script ran locally; not yet on GitHub Actions |
 | 1.30 | "In short" summary on the first page of report.md; Thai lines for every pgrls rule | Test suite |
+| 1.31 | `webcare init` and first-run steps in the skill | Test suite |
 
 ## In progress
 
@@ -45,14 +46,10 @@ Nothing at the moment.
 Decided with the owner on 23 November 2026: make the tool easy for beginners who use it
 through an AI assistant, without making it less thorough for specialists.
 
-1. **First-time setup through the AI skill.** The skill asks the owner a short set of
-   questions, writes `webcare.toml` and runs the first check. "Does this database hold
-   real data?" defaults to yes, so the owner-approval guard applies when in doubt.
-   `webcare init` asks the same questions for people who type commands themselves.
-2. **A pause before checking real data.** When a target holds real data, the tool first
+1. **A pause before checking real data.** When a target holds real data, the tool first
    says what it will call and with which permissions, and waits for a yes. Staging runs as
    now; CI keeps using `--owner-approved` in place of the yes.
-3. **A stable report.json for others to build on.** A `schema_version` field, a published
+2. **A stable report.json for others to build on.** A `schema_version` field, a published
    JSON Schema, and a promise not to break the shape within a major version, so others
    can build dashboards or a point-and-click interface on top of the tool.
 

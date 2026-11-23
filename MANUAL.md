@@ -57,7 +57,13 @@ Python 3.11 or later is required.
 cd supabase-web-care
 python -m venv .venv && . .venv/bin/activate
 pip install --require-hashes -r requirements.lock
+python -m webcare init        # asks four questions and writes webcare.toml; contacts nothing
 ```
+
+`init` asks what to call the database, whether it is local, staging or production,
+whether it holds real people's data (when unsure, the answer is yes, so the owner-approval
+guard applies), and the project reference. An AI assistant can pass the answers as flags
+(`--name`, `--env`, `--real-data`, `--project-ref`, `--lang`). It never asks for a key.
 
 ### Check from files (no key and no connection of any kind)
 

@@ -62,8 +62,10 @@ pip install --require-hashes -r requirements.lock   # every file checked against
 python -m webcare check --repo <web project> --migrations <migrations folder>
 ```
 
-Live checks need a target declared in `webcare.toml`; copy
-`webcare.example.toml`. Credentials come from environment variables only.
+Live checks need a target declared in `webcare.toml`. `python -m webcare init` asks a
+few questions (or takes them as flags) and writes it, then prints the next steps; or copy
+`webcare.example.toml`. Credentials come from environment variables only. With an AI
+assistant, ask it to set the toolkit up with you: the skill walks it through the same steps.
 
 To check migrations on every pull request, use the action
 (`uses: mnatee-commits/supabase-web-care@<commit>`) or the pre-commit hooks; see

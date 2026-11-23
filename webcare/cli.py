@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from . import (
-    __version__, advisors, anon_probe, api_snapshot, auth_config, backups, baseline, changes, data_api, db_health, functions_static, health, inventory, live, logs, pgrls_runner, secret_scan,
+    __version__, advisors, anon_probe, api_snapshot, auth_config, backups, baseline, changes, data_api, setup_init, db_health, functions_static, health, inventory, live, logs, pgrls_runner, secret_scan,
     focus, parity, platform, sarif, snapshot, storage_buckets, table_writes,
 )
 from .model import ERROR, NOT_RUN, CheckResult, Refusal, severity_at_least
@@ -235,6 +235,19 @@ def build_parser() -> argparse.ArgumentParser:
     _add_probe_options(check)
     check.set_defaults(handler=cmd_check)
 
+    init = commands.add_parser(
+        "init", help="write a target into webcare.toml from a few answers (asks when run in a terminal)",
+    )
+    init.add_argument("--config", default=DEFAULT_CONFIG_NAME, help="target file to write (default: ./webcare.toml)")
+    init.add_argument("--name", help="a short name for the target, e.g. staging")
+    init.add_argument("--env", choices=["local", "staging", "production"], help="what kind of environment it is")
+    init.add_argument("--real-data", dest="real", choices=["yes", "no"],
+                      help="does it hold real people's data? (default when not asked: yes)")
+    init.add_argument("--project-ref", help="the 20-letter project reference, for --via-api")
+    init.add_argument("--schema", action="append", default=[], help="schema to check; repeatable (default: public)")
+    init.add_argument("--lang", choices=LANGUAGES, default="en", help="language of reports for this target")
+    init.set_defaults(handler=cmd_init)
+
     secrets = commands.add_parser("secrets", help="scan a source tree for credentials")
     secrets.add_argument("paths", nargs="*", default=["."], help="files or directories (default: .)")
     secrets.add_argument("--exclude", action="append", default=[], help="glob of paths to skip; repeatable")
@@ -362,6 +375,23 @@ def cmd_preflight(args: argparse.Namespace) -> int:
         print(f"warning:    this role {' and '.join(problems)} (accepted by {live.OVERRIDE_FLAG})")
     else:
         print("ok:         this role cannot write to application tables")
+    return 0
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    interactive = sys.stdin.isatty()
+    try:
+        message = setup_init.run(
+            Path(args.config), args.name, args.env, args.real, args.project_ref, args.schema or None,
+            args.lang, interactive,
+        )
+    except Refusal as refusal:
+        print(f"refused: {refusal}", file=sys.stderr)
+        return EXIT_REFUSED
+    except (EOFError, KeyboardInterrupt):
+        print("stopped; nothing was written", file=sys.stderr)
+        return EXIT_REFUSED
+    print(message)
     return 0
 
 
