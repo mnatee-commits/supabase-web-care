@@ -308,8 +308,10 @@ def _excluded(relative: str, excludes: Iterable[str]) -> bool:
     return any(fnmatch.fnmatch(relative, pattern) for pattern in excludes)
 
 
-def _iter_files(root: Path, excludes: tuple[str, ...], skip_dirs: frozenset = SKIP_DIRS):
-    """Yield (path, relative posix path) for regular files under root."""
+def _iter_files(root: Path, excludes: tuple[str, ...], skip_dirs: frozenset = SKIP_DIRS,
+                only: Optional[set] = None):
+    """Yield (path, relative posix path) for regular files under root; only those in `only`
+    (absolute paths) when it is given."""
     if root.is_file():
         yield root, root.name
         return
@@ -322,6 +324,8 @@ def _iter_files(root: Path, excludes: tuple[str, ...], skip_dirs: frozenset = SK
             relative = path.relative_to(root).as_posix()
             if _excluded(relative, excludes):
                 continue
+            if only is not None and path.resolve() not in only:
+                continue
             yield path, relative
 
 
@@ -330,11 +334,12 @@ def scan_tree(
     excludes: Iterable[str] = (),
     max_bytes: int = DEFAULT_MAX_BYTES,
     include_build: bool = False,
+    only: Optional[set] = None,
 ) -> tuple[list[Finding], ScanStats]:
     findings: list[Finding] = []
     stats = ScanStats()
     skip_dirs = SKIP_DIRS - BUILD_DIRS if include_build else SKIP_DIRS
-    for path, relative in _iter_files(root, tuple(excludes), skip_dirs):
+    for path, relative in _iter_files(root, tuple(excludes), skip_dirs, only):
         try:
             if path.stat().st_size > max_bytes:
                 stats.skipped_large += 1
@@ -376,6 +381,7 @@ def run(
     excludes: Iterable[str] = (),
     max_bytes: int = DEFAULT_MAX_BYTES,
     include_build: bool = False,
+    only: Optional[set] = None,
 ) -> CheckResult:
     result = CheckResult(id="secrets", title=TITLE)
     roots = [Path(root) for root in roots]
@@ -387,7 +393,7 @@ def run(
 
     total = ScanStats()
     for root, prefix in zip(roots, root_labels(roots)):
-        findings, stats = scan_tree(root, excludes, max_bytes, include_build)
+        findings, stats = scan_tree(root, excludes, max_bytes, include_build, only)
         for finding in findings:
             result.findings.append(
                 Finding(

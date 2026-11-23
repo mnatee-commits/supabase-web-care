@@ -3,6 +3,19 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.25.0
+- `check --parity <inventory file>`: takes a new inventory of the same target and reports
+  every change since the file was saved (medium for grants, policies, functions and
+  default privileges; low for migrations, jobs, buckets and extensions). Another target's
+  file is refused. New focus area `parity`.
+- `check --changed-since <ref>`: the credential scan reads only files changed since that
+  git revision (and untracked ones), and the SQL checks run only when a SQL file changed.
+  Live checks are never narrowed, since a database can change without a commit. The
+  revision is checked as a plain name and passed after `--end-of-options`, so it cannot
+  act as a git option.
+- Both from the second outside review's design proposals, with `--changed-since` limited
+  to the file checks.
+
 ## 1.24.0
 - Four catalog checks: `realtime_table_without_rls` (high), `realtime_messages_open`
   (medium), `view_runs_as_owner` (medium) and `schema_usable_but_unchecked` (low). They run

@@ -57,6 +57,7 @@ def test_offline_check_writes_a_report_and_fails_on_high(tmp_path):
         "health_logs": "NOT_RUN",
         "db_health": "NOT_RUN",
         "data_api": "NOT_RUN",
+        "parity": "NOT_RUN",
         "advisors_performance": "NOT_RUN",
         "anon_probe": "NOT_RUN",
     }
@@ -150,6 +151,7 @@ def test_live_check_end_to_end(pg, tmp_path, monkeypatch):
         "health_logs": "NOT_RUN",
         "db_health": "PASS",
         "data_api": "NOT_RUN",
+        "parity": "NOT_RUN",
         "advisors_performance": "NOT_RUN",
         "anon_probe": "NOT_RUN",
     }

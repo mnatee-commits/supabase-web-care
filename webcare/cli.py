@@ -23,8 +23,8 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from . import (
-    __version__, advisors, anon_probe, api_snapshot, auth_config, backups, baseline, data_api, db_health, functions_static, health, inventory, live, logs, pgrls_runner, secret_scan,
-    focus, sarif, snapshot, storage_buckets, table_writes,
+    __version__, advisors, anon_probe, api_snapshot, auth_config, backups, baseline, changes, data_api, db_health, functions_static, health, inventory, live, logs, pgrls_runner, secret_scan,
+    focus, parity, sarif, snapshot, storage_buckets, table_writes,
 )
 from .model import ERROR, NOT_RUN, CheckResult, Refusal, severity_at_least
 from .report import DEFAULT_LANGUAGE, LANGUAGE_ENV, LANGUAGES, Report
@@ -50,6 +50,7 @@ TITLES = {
     "health_logs": logs.TITLE,
     "db_health": db_health.TITLE,
     "data_api": data_api.TITLE,
+    "parity": parity.TITLE,
     "advisors_performance": advisors.PERFORMANCE_TITLE,
     "anon_probe": "What an anonymous visitor can read",
 }
@@ -148,6 +149,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--with-advisors", action="store_true",
         help="with --via-api, also read Supabase's own security lints (one GET; the token then "
         "also needs advisors_read)",
+    )
+    check.add_argument(
+        "--parity", metavar="INVENTORY",
+        help="compare the database with an inventory saved earlier from the same target "
+        "(webcare inventory) and report what changed since",
+    )
+    check.add_argument(
+        "--changed-since", metavar="REF",
+        help="file checks only look at what changed since this git revision (e.g. HEAD~1, main); "
+        "database checks still run in full",
     )
     check.add_argument(
         "--with-data-api", action="store_true",
@@ -470,6 +481,7 @@ def _snapshot_checks(
                     ("health_logs", args.with_logs),
                     ("advisors_performance", args.with_performance),
                     ("data_api", args.with_data_api),
+                    ("parity", bool(args.parity)),
                 )
                 if asked
             ]
@@ -538,6 +550,20 @@ def _snapshot_checks(
                 )
             except Refusal as refusal:
                 failed = CheckResult(id="advisors", title=advisors.TITLE, status=ERROR)
+                failed.reason = str(refusal)
+                results.append(failed)
+        if args.parity:
+            try:
+                results.append(
+                    parity.run(
+                        api_snapshot.asker(target, args.owner_approved, args.token_env), target,
+                        Path(args.parity),
+                        f"a new inventory of project {target.project_ref}, through the Management API "
+                        f"read-only query endpoint, against {Path(args.parity).name}",
+                    )
+                )
+            except Refusal as refusal:
+                failed = CheckResult(id="parity", title=parity.TITLE, status=ERROR)
                 failed.reason = str(refusal)
                 results.append(failed)
         if args.with_data_api:
@@ -742,6 +768,9 @@ def _live_checks(
             results.append(storage_buckets.run_on_connection(connection, target, evidence))
             results.append(table_writes.run_on_connection(connection, target, evidence))
             results.append(db_health.run_on_connection(connection, evidence))
+            if args.parity:
+                results.append(parity.run(inventory.connection_asker(connection), target, Path(args.parity),
+                                          f"{evidence}, against {Path(args.parity).name}"))
             results.append(health.run_on_connection(connection, evidence, args.cron_days, target.expected_cron_jobs))
 
         if "probe" in skip:
@@ -842,9 +871,25 @@ def cmd_check(args: argparse.Namespace) -> int:
     checks: list[CheckResult] = []
     repos = [Path(p) for p in (args.repo or ["."])]
 
+    changed: Optional[set[Path]] = None
+    if args.changed_since:
+        try:
+            changed = set()
+            for repo in repos:
+                changed |= changes.changed_files(repo, args.changed_since)
+            for extra in ([Path(args.migrations)] if args.migrations else []) + [Path(p) for p in args.sql_file]:
+                if extra.exists():
+                    changed |= changes.changed_files(extra, args.changed_since)
+        except Refusal as refusal:
+            print(f"refused: {refusal}", file=sys.stderr)
+            return EXIT_REFUSED
+
     if "secrets" not in skip:
         requested.add("secrets")
-        checks.append(secret_scan.run(repos, args.exclude, args.max_bytes, args.include_build))
+        scan = secret_scan.run(repos, args.exclude, args.max_bytes, args.include_build, changed)
+        if changed is not None:
+            scan.notes.append(f"only files changed since {args.changed_since} were read ({len(changed)} changed)")
+        checks.append(scan)
 
     sql_files: list[Path] = []
     if "static" not in skip:
@@ -860,6 +905,8 @@ def cmd_check(args: argparse.Namespace) -> int:
             static.reason = functions.reason = "SQL file not found: " + ", ".join(missing)
         elif not sql_files:
             static.reason = functions.reason = "no SQL files given (--migrations or --sql-file)"
+        elif changed is not None and not any(path.resolve() in changed for path in sql_files):
+            static.reason = functions.reason = f"no SQL file changed since {args.changed_since}"
         else:
             requested.add("rls_static")
             static.evidence = (
@@ -874,6 +921,12 @@ def cmd_check(args: argparse.Namespace) -> int:
             )
             requested.add("functions_static")
             functions_static.run(sql_files, functions)
+            if changed is not None:
+                for result in (static, functions):
+                    result.notes.append(
+                        f"a SQL file changed since {args.changed_since}, so every given file was read: "
+                        "privileges depend on the files before the change"
+                    )
         checks.append(static)
         checks.append(functions)
 
@@ -899,6 +952,10 @@ def cmd_check(args: argparse.Namespace) -> int:
         checks.append(_not_run("storage_buckets", "buckets are read through --via-api or a database connection"))
     if not any(check.id == "table_writes" for check in checks):
         checks.append(_not_run("table_writes", "table privileges are read through --via-api or a database connection"))
+    if not any(check.id == "parity" for check in checks):
+        reason = (parity.NOT_ASKED if not args.parity
+                  else "a parity check needs a database connection or --via-api")
+        checks.append(_not_run("parity", reason))
     if not any(check.id == "data_api" for check in checks):
         reason = data_api.NOT_ASKED if args.via_api else "the Data API settings are only read with --via-api --with-data-api"
         checks.append(_not_run("data_api", reason))
@@ -942,8 +999,13 @@ def cmd_check(args: argparse.Namespace) -> int:
         for check in checks:
             if check.id in switched and check.status != NOT_RUN:
                 check.notes.append("switched on by the target's `checks` in the target file")
+    scope = plan.describe(args.lang)
+    if args.changed_since:
+        since = (f"ไฟล์ที่เปลี่ยนตั้งแต่ {args.changed_since} (ตรวจฐานเต็ม)" if args.lang == "th"
+                 else f"files changed since {args.changed_since} (database checks in full)")
+        scope = "; ".join(part for part in (scope, since) if part)
     report = Report(checks=checks, source=source, target=target_text, requested=requested, lang=args.lang,
-                    scope=plan.describe(args.lang))
+                    scope=scope)
     try:
         written = report.write(Path(args.out_dir))
     except OSError as error:

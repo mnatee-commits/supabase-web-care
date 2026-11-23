@@ -36,6 +36,13 @@ commands inside it were tested locally.
 - Fails on a new finding of high severity (change with `--fail-on`)
 - Attaches `report.md` to the run as an artifact
 
+## Only what a pull request changed
+
+Add `--changed-since origin/main` (fetch the base branch first, for example with
+`fetch-depth: 0` on `actions/checkout`). The credential scan then reads only the files the
+pull request changed, and the SQL checks run only when a SQL file changed. The report's
+scope line says so.
+
 ## Findings on the lines of a pull request
 
 Add `--sarif` to the check, and the tool also writes `webcare-output/report.sarif`.

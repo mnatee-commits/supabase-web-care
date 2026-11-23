@@ -26,6 +26,10 @@
 - ข้อใหม่ระดับสูงทำให้งานล้ม (เปลี่ยนได้ด้วย `--fail-on`)
 - แนบ `report.md` เป็นไฟล์ผลลัพธ์ของงาน
 
+## ตรวจเฉพาะสิ่งที่ pull request เปลี่ยน
+
+เพิ่ม `--changed-since origin/main` (ต้องดึง branch หลักมาก่อน เช่นใส่ `fetch-depth: 0` ใน `actions/checkout`) การสแกน key จะอ่านเฉพาะไฟล์ที่ pull request เปลี่ยน และตรวจ SQL เฉพาะเมื่อมีไฟล์ SQL เปลี่ยน บรรทัดขอบเขตในรายงานจะบอกไว้
+
 ## แสดงผลบนบรรทัดของ pull request
 
 ใส่ `--sarif` ในคำสั่งตรวจ เครื่องมือจะเขียน `webcare-output/report.sarif` เพิ่ม ขั้นตอนที่ comment ไว้ท้ายตัวอย่าง workflow จะอัปโหลดไฟล์นี้ แล้ว GitHub แสดงแต่ละข้อบนบรรทัดของ migration ที่เป็นต้นเหตุ ต้องเป็น repository สาธารณะ หรือ repository ส่วนตัวที่เปิด GitHub Code Security และต้องให้สิทธิ์ `security-events: write`

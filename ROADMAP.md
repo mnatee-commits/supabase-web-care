@@ -29,6 +29,7 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.22 | `--only`, `--group`, `--fail-groups` | Test suite |
 | 1.23 | Database health (`db_health`) and Supabase's Performance Advisor (`--with-performance`) | The health statement ran on a real project; the Performance Advisor answer has not been read yet |
 | 1.24 | Realtime, owner-rights views, unchecked schemas; Data API settings (`--with-data-api`) | The catalog statements ran on a real project; the PostgREST settings endpoint has not been called yet |
+| 1.25 | `--parity` (changes since a saved inventory) and `--changed-since` (file checks only) | Test suite, including a parity run against the test database; the inventory statements ran on a real project in 1.16 |
 
 ## In progress
 
@@ -41,10 +42,7 @@ Nothing at the moment.
    Management API endpoints for these have not been checked yet.
 3. **Thai text for each finding's detail.** Headings are translated already.
 4. **A GitHub Action (`action.yml`) and a pre-commit hook**, so a site's repository can
-   run the file checks in one line.
-   With them, `--changed-since <ref>` for the file checks only (a database can change
-   without a commit, so live checks are never narrowed by a diff), and a parity check
-   that compares the database with a saved inventory and reports what changed.
+   run the file checks in one line, using `--changed-since`.
 
 ## Waiting on a decision
 

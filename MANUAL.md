@@ -269,6 +269,29 @@ optional `--via-api` check on. Every check left out still has a row, marked `NOT
 with the reason, and the report's header names the scope, so a focused report is never
 read as a whole one. A check left out by the focus does not make the exit code 2.
 
+### What changed since last time
+
+**In a database: `--parity`.** Save an inventory once (see "Comparing two environments"),
+then pass it to later checks of the same target:
+
+```bash
+python -m webcare inventory --target staging --via-api --out staging-2026-11-23.inv.json
+python -m webcare check --target staging --via-api --parity staging-2026-11-23.inv.json
+```
+
+Every grant, policy, function, default privilege, migration, scheduled job, bucket or
+extension that appeared, went away or changed since the file was saved is reported:
+medium for parts that decide who may reach what, low for the rest. Read each as "was
+this intended?", and save a new inventory once it was. The file must come from the same
+target; another target's file is refused.
+
+**In a repository: `--changed-since`.** In CI, `--changed-since main` (or `HEAD~1`) makes
+the credential scan read only files changed since that revision, and runs the SQL checks
+only when a SQL file changed (then over every given file, because a function's
+privileges depend on the files before it). Checks of a live database always run in full:
+a database can change without a commit. The revision must be a plain name; anything
+that looks like an option is refused before git runs.
+
 ### Comparing two environments
 
 Staging and production that drift apart are a common cause of trouble: a job

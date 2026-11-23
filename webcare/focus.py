@@ -45,6 +45,7 @@ AREAS: dict[str, Area] = {
         frozenset({"extra_live"}),
         frozenset({"realtime_table_without_rls", "realtime_messages_open"}),
     ),
+    "parity": Area(frozenset({"parity"})),
     "auth": Area(frozenset({"auth_config"}), optional=("with_auth_config",)),
     "advisors": Area(frozenset({"advisors"}), optional=("with_advisors",)),
     "health": Area(
@@ -79,7 +80,7 @@ ALL_OPTIONAL = ("with_advisors", "with_auth_config", "with_backups", "with_logs"
 STATIC = ("rls_static", "functions_static")
 LIVE = ("rls_live", "storage_live", "extra_live", "functions_live", "storage_buckets",
         "table_writes", "health_cron", "advisors", "auth_config", "health_backups", "health_logs",
-        "db_health", "advisors_performance", "data_api")
+        "db_health", "advisors_performance", "data_api", "parity")
 
 
 def _split(values: Iterable[str]) -> list[str]:
