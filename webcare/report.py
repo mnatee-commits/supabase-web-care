@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from . import __version__
+from .explain_th import explain
 from .manual import MANUAL_ITEMS
 from .model import ERROR, FINDINGS, NOT_RUN, PASS, SEVERITIES, CheckResult, severity_at_least
 
@@ -67,7 +68,7 @@ TEXT = {
         "คอลัมน์ \"ข้อมูล\" คือข้อสังเกตที่ไม่นับเป็นปัญหา",
         "each": "## ผลแต่ละการตรวจ",
         "status": "สถานะ", "evidence": "หลักฐาน", "reason": "เหตุผล", "note": "หมายเหตุ",
-        "findings_head": "| ระดับ | กฎ | ตำแหน่ง | รายละเอียด |",
+        "findings_head": "| ระดับ | กฎ | ตำแหน่ง | ความหมายและวิธีแก้ | รายละเอียด (อังกฤษ) |",
         "truncated": "แสดง {shown} จาก {total} รายการ รายการทั้งหมดอยู่ในไฟล์ report.json",
         "manual": "## รายการที่ต้องตรวจด้วยมือ (NOT_RUN ทุกข้อ)",
         "manual_intro": "สคริปต์ตรวจข้อเหล่านี้ไม่ได้ ต้องให้คนหรือ agent ที่มีสิทธิ์เข้าถึงตรวจแยก",
@@ -194,11 +195,13 @@ class Report:
                 ordered = sorted(
                     check.findings, key=lambda f: (SEVERITIES.index(f.severity), f.rule, f.location)
                 )
-                lines += ["", text["findings_head"], "|---|---|---|---|"]
+                thai = self.lang == "th"
+                lines += ["", text["findings_head"], "|---|---|---|---|---|" if thai else "|---|---|---|---|"]
                 for finding in ordered[:MAX_ROWS_PER_CHECK]:
+                    meaning = f" {_cell(explain(finding) or '-')} |" if thai else ""
                     lines.append(
                         f"| {severity_names[finding.severity]} | {_cell(finding.rule)} | "
-                        f"{_cell(finding.location)} | {_cell(_shorten(finding.message))} |"
+                        f"{_cell(finding.location)} |{meaning} {_cell(_shorten(finding.message))} |"
                     )
                 if len(ordered) > MAX_ROWS_PER_CHECK:
                     lines += ["", text["truncated"].format(shown=MAX_ROWS_PER_CHECK, total=len(ordered))]

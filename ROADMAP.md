@@ -32,6 +32,7 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.25 | `--parity` (changes since a saved inventory) and `--changed-since` (file checks only) | Test suite, including a parity run against the test database; the inventory statements ran on a real project in 1.16 |
 | 1.26 | Storage upload-and-replace judged per bucket | Yes |
 | 1.27 | SSL enforcement and network restrictions (`--with-platform`) | Test suite only; the endpoints have not been called against a real project |
+| 1.28 | Thai explanation of every finding in Thai reports | Test suite |
 
 ## In progress
 
@@ -39,13 +40,12 @@ Nothing at the moment.
 
 ## Planned, not started
 
-1. **Thai text for each finding's detail.** Headings are translated already.
-2. **A GitHub Action (`action.yml`) and a pre-commit hook**, so a site's repository can
+1. **A GitHub Action (`action.yml`) and a pre-commit hook**, so a site's repository can
    run the file checks in one line, using `--changed-since`.
 
 ## Waiting on a decision
 
-3. **Probing as a signed-in test user.** Policies that exist but restrict too
+2. **Probing as a signed-in test user.** Policies that exist but restrict too
    little are a common cause of leaks, and only a signed-in request shows them.
    Signing in writes session rows, and may write an application's own audit
    rows, so this needs a design that the owner of each project accepts. Staging

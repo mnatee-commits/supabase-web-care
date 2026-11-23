@@ -3,6 +3,12 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.28.0
+- Thai reports explain every finding in Thai: `report.md` with `--lang th` gains a column
+  with what the rule means and what to do, next to the English detail, for every rule the
+  toolkit has (a test fails when a new rule has no Thai line). Findings from pgrls and from
+  Supabase's advisors get one line per source. `report.json` is unchanged.
+
 ## 1.27.0
 - `--with-platform`: two GETs, of SSL enforcement and network restrictions. SSL off is a
   finding (medium; high for real data); direct connections open to every address are low.
