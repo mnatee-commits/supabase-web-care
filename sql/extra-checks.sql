@@ -346,3 +346,98 @@ where n.nspname = 'cron'
   and pg_catalog.has_schema_privilege(r.oid, n.oid, 'USAGE')
   and reach.functions + reach.relations > 0
 order by 1;
+
+-- check: realtime_table_without_rls
+-- severity: high
+-- title: Table sent out by Realtime with RLS off
+-- why: Realtime sends every change to a table in the supabase_realtime publication to
+--      subscribers whose role may read the table, filtered by RLS. With RLS off, anyone
+--      who may read it gets every insert, update and delete as it happens.
+select
+  quote_ident(pt.schemaname) || '.' || quote_ident(pt.tablename) as location,
+  'in publication supabase_realtime, RLS is off, and '
+    || concat_ws(' and ',
+         case when pg_catalog.has_table_privilege('anon', c.oid, 'SELECT') then 'anon' end,
+         case when pg_catalog.has_table_privilege('authenticated', c.oid, 'SELECT') then 'authenticated' end)
+    || ' may read it, so every change reaches them live' as detail
+from pg_catalog.pg_publication_tables pt
+join pg_catalog.pg_namespace n on n.nspname = pt.schemaname
+join pg_catalog.pg_class c on c.relnamespace = n.oid and c.relname = pt.tablename
+where pt.pubname = 'supabase_realtime'
+  and not c.relrowsecurity
+  and pg_catalog.to_regrole('anon') is not null
+  and pg_catalog.to_regrole('authenticated') is not null
+  and (pg_catalog.has_table_privilege('anon', c.oid, 'SELECT')
+       or pg_catalog.has_table_privilege('authenticated', c.oid, 'SELECT'))
+order by 1;
+
+-- check: realtime_messages_open
+-- severity: medium
+-- title: Realtime Broadcast or Presence open to everyone by an unconditional policy
+-- why: Private channels are guarded by RLS policies on realtime.messages. A policy for
+--      anon or public whose condition is just true lets anyone join, listen and send.
+select
+  'realtime.messages.' || quote_ident(p.policyname) as location,
+  p.cmd || ' for ' || array_to_string(p.roles, ', ')
+    || ' with no condition: anyone with the public key may use every private channel' as detail
+from pg_catalog.pg_policies p
+where p.schemaname = 'realtime'
+  and p.tablename = 'messages'
+  and p.permissive = 'PERMISSIVE'
+  and p.roles && array['anon', 'public']::name[]
+  and coalesce(nullif(btrim(p.qual), ''), nullif(btrim(p.with_check), '')) in ('true', '(true)')
+order by 1;
+
+-- check: view_runs_as_owner
+-- severity: medium
+-- title: View that API roles may read runs with its owner's rights
+-- why: A view reads its tables as the view's owner unless it sets security_invoker,
+--      so the tables' RLS does not filter what anon or authenticated see through it.
+--      Supabase's advisor calls this security_definer_view.
+select
+  quote_ident(n.nspname) || '.' || quote_ident(c.relname) as location,
+  concat_ws(' and ',
+    case when pg_catalog.has_table_privilege('anon', c.oid, 'SELECT') then 'anon' end,
+    case when pg_catalog.has_table_privilege('authenticated', c.oid, 'SELECT') then 'authenticated' end)
+    || ' may read this view, which runs as its owner, so RLS on its tables does not apply; '
+    || 'set security_invoker = true or revoke SELECT' as detail
+from pg_catalog.pg_class c
+join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+where n.nspname = any(%(schemas)s)
+  and c.relkind in ('v', 'm')
+  and pg_catalog.to_regrole('anon') is not null
+  and pg_catalog.to_regrole('authenticated') is not null
+  and not exists (
+    select 1 from unnest(coalesce(c.reloptions, '{}'::text[])) o
+    where o ~* '^security_invoker=(true|on|yes|1)$')
+  and (pg_catalog.has_table_privilege('anon', c.oid, 'SELECT')
+       or pg_catalog.has_table_privilege('authenticated', c.oid, 'SELECT'))
+order by 1;
+
+-- check: schema_usable_but_unchecked
+-- severity: low
+-- title: Schema the API roles may use that these checks do not cover
+-- why: The Data API can only serve a schema the API roles have USAGE on. A schema with
+--      USAGE for anon or authenticated that is left out of the target's schemas may be
+--      served without any of these checks looking at it.
+select
+  quote_ident(n.nspname) as location,
+  concat_ws(' and ',
+    case when pg_catalog.has_schema_privilege('anon', n.oid, 'USAGE') then 'anon' end,
+    case when pg_catalog.has_schema_privilege('authenticated', n.oid, 'USAGE') then 'authenticated' end)
+    || ' may use this schema, which is not in the target''s schemas. That is expected when '
+    || 'policies call functions kept there; if the Data API also serves it, add it to the '
+    || 'target''s schemas (--with-data-api shows which schemas are served)' as detail
+from pg_catalog.pg_namespace n
+where not (n.nspname = any(%(schemas)s))
+  and n.nspname !~ '^pg_'
+  and n.nspname not in (
+    'information_schema', 'auth', 'storage', 'extensions', 'graphql', 'graphql_public',
+    'realtime', 'vault', 'pgsodium', 'pgsodium_masks', 'supabase_functions',
+    'supabase_migrations', 'net', 'cron', 'pgbouncer', 'pgtle', 'pgmq', 'pgmq_public'
+  )
+  and pg_catalog.to_regrole('anon') is not null
+  and pg_catalog.to_regrole('authenticated') is not null
+  and (pg_catalog.has_schema_privilege('anon', n.oid, 'USAGE')
+       or pg_catalog.has_schema_privilege('authenticated', n.oid, 'USAGE'))
+order by 1;

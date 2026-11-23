@@ -3,6 +3,18 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.24.0
+- Four catalog checks: `realtime_table_without_rls` (high), `realtime_messages_open`
+  (medium), `view_runs_as_owner` (medium) and `schema_usable_but_unchecked` (low). They run
+  on a connection, `--via-api` and a snapshot file. New focus area `realtime`.
+- `--with-data-api`: one GET of the PostgREST settings, reduced to `db_schema`,
+  `db_extra_search_path` and `max_rows` before anything reads it (the answer is documented
+  to carry a JWT secret); served schemas the target leaves out are a medium finding. On
+  hosted Supabase the served schemas are not stored in the database, so this GET is the
+  only way to read them. Also in the target file as `checks = ["data_api"]`.
+- The four statements ran on a real project: no Realtime table, no open channel policy, no
+  owner-rights view; one schema (`private`) usable by `authenticated`, as its policies need.
+
 ## 1.23.0
 - Database health (`db_health`), on a connection and `--via-api`: invalid indexes, table
   bloat, transaction-ID age of tables and the database, sessions idle in a transaction,

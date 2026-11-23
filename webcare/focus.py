@@ -28,8 +28,10 @@ AREAS: dict[str, Area] = {
                    "default_function_privileges_platform"}),
     ),
     "tables": Area(
-        frozenset({"rls_static", "rls_live", "table_writes", "extra_live", "anon_probe"}),
-        frozenset({"update_without_select", "auth_role_deprecated", "default_table_privileges"}),
+        frozenset({"rls_static", "rls_live", "table_writes", "extra_live", "anon_probe", "data_api"}),
+        frozenset({"update_without_select", "auth_role_deprecated", "default_table_privileges",
+                   "view_runs_as_owner", "schema_usable_but_unchecked"}),
+        optional=("with_data_api",),
     ),
     "storage": Area(
         frozenset({"storage_live", "storage_buckets", "extra_live"}),
@@ -38,6 +40,10 @@ AREAS: dict[str, Area] = {
     "extensions": Area(
         frozenset({"extra_live"}),
         frozenset({"extension_net_callable", "extension_vault_reachable", "extension_cron_reachable"}),
+    ),
+    "realtime": Area(
+        frozenset({"extra_live"}),
+        frozenset({"realtime_table_without_rls", "realtime_messages_open"}),
     ),
     "auth": Area(frozenset({"auth_config"}), optional=("with_auth_config",)),
     "advisors": Area(frozenset({"advisors"}), optional=("with_advisors",)),
@@ -57,7 +63,7 @@ GROUPS: dict[str, tuple[str, ...]] = {
 OPTIONAL_BY_CHECK = {
     "advisors": "with_advisors", "auth_config": "with_auth_config",
     "health_backups": "with_backups", "health_logs": "with_logs",
-    "advisors_performance": "with_performance",
+    "advisors_performance": "with_performance", "data_api": "with_data_api",
 }
 
 
@@ -68,11 +74,12 @@ def group_of(check_id: str) -> str:
 
 def catalog_ids() -> set[str]:
     return set().union(*(area.catalog for area in AREAS.values()))
-ALL_OPTIONAL = ("with_advisors", "with_auth_config", "with_backups", "with_logs", "with_performance")
+ALL_OPTIONAL = ("with_advisors", "with_auth_config", "with_backups", "with_logs", "with_performance",
+                "with_data_api")
 STATIC = ("rls_static", "functions_static")
 LIVE = ("rls_live", "storage_live", "extra_live", "functions_live", "storage_buckets",
         "table_writes", "health_cron", "advisors", "auth_config", "health_backups", "health_logs",
-        "db_health", "advisors_performance")
+        "db_health", "advisors_performance", "data_api")
 
 
 def _split(values: Iterable[str]) -> list[str]:

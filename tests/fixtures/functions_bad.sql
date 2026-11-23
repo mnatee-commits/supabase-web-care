@@ -68,3 +68,21 @@ grant select on vault.decrypted_secrets to authenticated;
 create schema if not exists cron;
 create function cron.schedule(name text, spec text, command text) returns bigint language sql as $$ select 1::bigint $$;
 grant usage on schema cron to authenticated;
+
+-- Realtime: a table published with RLS off, and an open policy on realtime.messages.
+create table public.live_feed (id int);
+grant select on public.live_feed to anon;
+create publication supabase_realtime for table public.live_feed;
+create schema if not exists realtime;
+create table realtime.messages (id int);
+alter table realtime.messages enable row level security;
+create policy anyone_listens on realtime.messages for select to anon using (true);
+-- Views: one that runs as its owner, one that runs as the caller.
+create table public.secret_notes (id int);
+alter table public.secret_notes enable row level security;
+create view public.owner_view as select id from public.secret_notes;
+create view public.invoker_view with (security_invoker = true) as select id from public.secret_notes;
+grant select on public.owner_view, public.invoker_view to anon;
+-- A schema the API roles may use that the target does not list.
+create schema api_extra;
+grant usage on schema api_extra to anon;

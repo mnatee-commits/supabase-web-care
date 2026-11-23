@@ -16,7 +16,8 @@ real system. A description and a synthetic example are enough.
 - Every statement it sends to a database is a single SELECT that it built
   itself; a guard refuses anything else before it leaves.
 - Through the Supabase Management API it uses the read-only query endpoint,
-  and five GET endpoints (backups, logs, sign-in settings, security and performance advisors)
+  and six GET endpoints (backups, logs, sign-in settings, Data API settings, security and
+  performance advisors)
   only when asked for: by their own `--with-*` flag, by the target's `checks` list,
   by a `--focus`, `--group` or `--only` that names their area or check, or by
   `--profile full`. A run that asks for none of these calls none of them.

@@ -216,6 +216,34 @@ def _advisors(kind: str, target: Target, owner_approved: bool, token_env: str, a
     )
 
 
+def postgrest_settings(target: Target, owner_approved: bool, token_env: str = DEFAULT_TOKEN_ENV, api_base: str = ""):
+    """GET the PostgREST settings and return only the allowlisted ones."""
+    from . import data_api
+
+    target.ensure_allowed(owner_approved)
+    if not target.project_ref:
+        raise Refusal(
+            f"target {target.name!r} declares no project_ref, so there is no project to ask"
+        )
+    token = os.environ.get(token_env, "")
+    check_token(token, token_env)
+    base = endpoint(target.project_ref, api_base).removesuffix("/database/query/read-only")
+    request = urllib.request.Request(
+        f"{base}/postgrest",
+        method="GET",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+            "User-Agent": f"supabase-web-care/{__version__}",
+        },
+    )
+    answer = _send(
+        request, token, "the PostgREST settings endpoint",
+        "the access token may not read this project's settings",
+    )
+    return data_api.keep(answer)  # the JWT secret in the answer goes no further
+
+
 def auth_settings(target: Target, owner_approved: bool, token_env: str = DEFAULT_TOKEN_ENV, api_base: str = ""):
     """GET the Auth configuration and return only the allowlisted settings."""
     from . import auth_config

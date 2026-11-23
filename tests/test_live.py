@@ -20,6 +20,10 @@ def test_extra_checks_file_holds_only_selects():
         "extension_net_callable",
         "extension_vault_reachable",
         "extension_cron_reachable",
+        "realtime_table_without_rls",
+        "realtime_messages_open",
+        "view_runs_as_owner",
+        "schema_usable_but_unchecked",
     ]
 
 
@@ -108,6 +112,7 @@ def test_extra_checks_on_both_schemas(pg):
         ("update_without_select", "public.docs.docs_update_own"),
         ("auth_role_deprecated", "public.tickets.tickets_signed_in"),
         ("storage_upsert_incomplete", "storage.objects (role authenticated)"),
+        ("view_runs_as_owner", "public.orders_view"),  # a view anon reads, without security_invoker
     }
     good = run(pg.auditor_good)
     assert good.status == "PASS" and not good.findings
@@ -234,6 +239,11 @@ def test_guard_that_trusts_current_user_and_default_privileges_are_found(pg):
     assert "decrypted_secrets" in vault[0].message
     cron = grouped["extension_cron_reachable"]
     assert [f.location for f in cron] == ["schema cron (role authenticated)"] and "schedule" in cron[0].message
+    assert [(f.location, f.severity) for f in grouped["realtime_table_without_rls"]] == [("public.live_feed", "high")]
+    assert [f.location for f in grouped["realtime_messages_open"]] == ["realtime.messages.anyone_listens"]
+    assert [f.location for f in grouped["view_runs_as_owner"]] == ["public.owner_view"]
+    assert "public.invoker_view" not in " ".join(f.location for f in grouped["view_runs_as_owner"])
+    assert "api_extra" in [f.location for f in grouped["schema_usable_but_unchecked"]]
     assert not any("could not run" in note for note in result.notes)
 
 
@@ -247,5 +257,5 @@ def test_comments_and_strings_naming_current_user_do_not_count(pg):
     assert "secdef_trusts_current_user" not in grouped
     assert "default_function_privileges" not in grouped
     assert "default_table_privileges" not in grouped
-    assert not any(rule.startswith("extension_") for rule in grouped)
+    assert not any(rule.startswith(("extension_", "realtime_", "view_runs")) for rule in grouped)
     assert not any("could not run" in note for note in result.notes)

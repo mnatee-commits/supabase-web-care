@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from . import (
-    __version__, advisors, anon_probe, api_snapshot, auth_config, backups, baseline, db_health, functions_static, health, inventory, live, logs, pgrls_runner, secret_scan,
+    __version__, advisors, anon_probe, api_snapshot, auth_config, backups, baseline, data_api, db_health, functions_static, health, inventory, live, logs, pgrls_runner, secret_scan,
     focus, sarif, snapshot, storage_buckets, table_writes,
 )
 from .model import ERROR, NOT_RUN, CheckResult, Refusal, severity_at_least
@@ -49,6 +49,7 @@ TITLES = {
     "health_backups": backups.TITLE,
     "health_logs": logs.TITLE,
     "db_health": db_health.TITLE,
+    "data_api": data_api.TITLE,
     "advisors_performance": advisors.PERFORMANCE_TITLE,
     "anon_probe": "What an anonymous visitor can read",
 }
@@ -147,6 +148,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--with-advisors", action="store_true",
         help="with --via-api, also read Supabase's own security lints (one GET; the token then "
         "also needs advisors_read)",
+    )
+    check.add_argument(
+        "--with-data-api", action="store_true",
+        help="with --via-api, also read which schemas the Data API serves (one GET of the "
+        "PostgREST settings; only allowlisted settings are kept)",
     )
     check.add_argument(
         "--with-performance", action="store_true",
@@ -463,6 +469,7 @@ def _snapshot_checks(
                     ("health_backups", args.with_backups),
                     ("health_logs", args.with_logs),
                     ("advisors_performance", args.with_performance),
+                    ("data_api", args.with_data_api),
                 )
                 if asked
             ]
@@ -531,6 +538,20 @@ def _snapshot_checks(
                 )
             except Refusal as refusal:
                 failed = CheckResult(id="advisors", title=advisors.TITLE, status=ERROR)
+                failed.reason = str(refusal)
+                results.append(failed)
+        if args.with_data_api:
+            try:
+                results.append(
+                    data_api.run(
+                        target,
+                        lambda: api_snapshot.postgrest_settings(target, args.owner_approved, args.token_env),
+                        f"PostgREST settings of project {target.project_ref}, read through the Management "
+                        "API and reduced to an allowlist",
+                    )
+                )
+            except Refusal as refusal:
+                failed = CheckResult(id="data_api", title=data_api.TITLE, status=ERROR)
                 failed.reason = str(refusal)
                 results.append(failed)
         if args.with_performance:
@@ -878,6 +899,9 @@ def cmd_check(args: argparse.Namespace) -> int:
         checks.append(_not_run("storage_buckets", "buckets are read through --via-api or a database connection"))
     if not any(check.id == "table_writes" for check in checks):
         checks.append(_not_run("table_writes", "table privileges are read through --via-api or a database connection"))
+    if not any(check.id == "data_api" for check in checks):
+        reason = data_api.NOT_ASKED if args.via_api else "the Data API settings are only read with --via-api --with-data-api"
+        checks.append(_not_run("data_api", reason))
     if not any(check.id == "db_health" for check in checks):
         checks.append(_not_run("db_health", "statistics are read through --via-api or a database connection"))
     if not any(check.id == "advisors_performance" for check in checks):

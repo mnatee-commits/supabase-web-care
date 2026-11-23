@@ -122,6 +122,14 @@ class FakeManagementApi(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"result": type(self).log_rows} if status == 200 else {"message": "no"}).encode())
             return
+        if self.path == f"/v1/projects/{REF}/postgrest":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"db_schema": "public, graphql_public, reports", "max_rows": 1000,
+                                         "db_extra_search_path": "public, extensions",
+                                         "jwt_secret": "super-secret-jwt-value-never-kept"}).encode())
+            return
         if self.path == f"/v1/projects/{REF}/advisors/performance":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -493,3 +501,15 @@ def test_performance_advisors_are_read_only_when_asked(api, tmp_path, capsys, mo
     found = {(f["rule"], f["severity"]) for f in checks["advisors_performance"]["findings"]}
     assert found == {("unindexed_foreign_keys", "info"), ("auth_rls_initplan", "low")}
     assert "experimental" in " ".join(checks["advisors_performance"]["notes"])
+
+
+def test_data_api_settings_keep_only_the_allowlist(api, tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("WEBCARE_DATABASE_URL", raising=False)
+    config = tmp_path / "webcare.toml"
+    config.write_text(f'[[target]]\nname = "staging"\nenv = "staging"\ndata = "synthetic"\nproject_ref = "{REF}"\n')
+    code, checks, text = run_cli(tmp_path, capsys, "--via-api", "--with-data-api", "--target", "staging",
+                                 "--config", str(config))
+    found = [(f["rule"], f["location"]) for f in checks["data_api"]["findings"]]
+    assert found == [("served_schema_unchecked", "schema reports")]
+    assert "super-secret-jwt-value-never-kept" not in text and "jwt_secret" not in text
+    assert "row cap per request: 1000" in " ".join(checks["data_api"]["notes"])
