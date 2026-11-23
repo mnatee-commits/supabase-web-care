@@ -3,6 +3,15 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.21.0
+- Focused runs: `--focus` with one or more areas (`secrets`, `functions`, `tables`,
+  `storage`, `extensions`, `auth`, `advisors`, `health`) runs only their checks, and
+  inside the catalog checks only theirs; an area that needs an optional `--via-api`
+  check switches it on. `--profile quick` checks files only; `--profile full` switches
+  every optional check on. Checks left out keep a row marked `NOT_RUN` with the reason,
+  the report names its scope, and the exit code does not count them. Asked for by the
+  owner, so that a growing set of checks can be run one area at a time.
+
 ## 1.20.0
 - Three catalog checks for extension schemas the API roles should not reach:
   `extension_net_callable` (medium: `anon` or `authenticated` may call pg_net, which sends

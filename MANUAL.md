@@ -231,6 +231,31 @@ python -m webcare check --snapshot staging.json --target <target name> --skip se
 - If the target declares `rest` and `WEBCARE_ANON_KEY` is set, the HEAD probe still works, using the table list from the snapshot.
 - A snapshot file carries no Storage, scheduled-job, backup, log or sign-in information; those need route 1.
 
+### Checking one area at a time
+
+`--focus` runs only the checks of the areas named, comma-separated or repeated:
+
+| Area | What it covers |
+|---|---|
+| `secrets` | credentials left in the source tree |
+| `functions` | who may call `SECURITY DEFINER` functions, from files and the catalog; guards that trust `current_user`; default privileges of new functions |
+| `tables` | RLS policies (pgrls), table write privileges, default privileges of new tables, what an anonymous visitor can read |
+| `storage` | Storage policies and buckets |
+| `extensions` | pg_net, Vault and pg_cron reachable by the API roles |
+| `auth` | sign-in settings (switches `--with-auth-config` on) |
+| `advisors` | Supabase's own security lints (switches `--with-advisors` on) |
+| `health` | scheduled jobs, backups and the log summary (switches `--with-backups` and `--with-logs` on) |
+
+```bash
+python -m webcare check --target staging --via-api --focus extensions
+python -m webcare check --target staging --via-api --focus functions,tables
+```
+
+`--profile quick` checks files only and contacts nothing; `--profile full` switches every
+optional `--via-api` check on. Every check left out still has a row, marked `NOT_RUN`
+with the reason, and the report's header names the scope, so a focused report is never
+read as a whole one. A check left out by the focus does not make the exit code 2.
+
 ### Comparing two environments
 
 Staging and production that drift apart are a common cause of trouble: a job

@@ -53,6 +53,7 @@ TEXT = {
     "th": {
         "heading": "# รายงาน Supabase Web Care",
         "generated": "สร้างเมื่อ", "tool": "เครื่องมือ", "source": "ซอร์สที่ตรวจ", "target": "เป้าหมายที่เชื่อมต่อ",
+        "scope": "ขอบเขต (ตรวจเพียงบางส่วน)",
         "summary": "## สรุป",
         "summary_head": "| การตรวจ | สถานะ | สูง | กลาง | ต่ำ | ข้อมูล |",
         "legend": "PASS = ตรวจแล้วไม่พบ, FINDINGS = พบปัญหา, NOT_RUN = ยังไม่ได้ตรวจ, "
@@ -68,6 +69,7 @@ TEXT = {
     "en": {
         "heading": "# Supabase Web Care report",
         "generated": "Generated", "tool": "Tool", "source": "Source examined", "target": "Live target",
+        "scope": "Scope (only part of the checks ran)",
         "summary": "## Summary",
         "summary_head": "| Check | Status | High | Medium | Low | Info |",
         "legend": "PASS = checked, nothing found. FINDINGS = problems found. NOT_RUN = not checked "
@@ -96,6 +98,7 @@ class Report:
         default_factory=lambda: datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     )
     lang: str = DEFAULT_LANGUAGE  # language of report.md and of the manual items
+    scope: str = ""  # a focused run's areas or profile; empty for a whole run
 
     def counts(self, check: CheckResult) -> dict[str, int]:
         totals = {severity: 0 for severity in SEVERITIES}
@@ -127,6 +130,7 @@ class Report:
             "language": self.lang,
             "source": self.source,
             "target": self.target,
+            "scope": self.scope or None,
             "checks": [check.to_dict() for check in self.checks],
             "manual": [
                 {"id": item.id, "status": NOT_RUN, "title": item.title(self.lang), "how": item.how(self.lang)}
@@ -148,6 +152,7 @@ class Report:
             f"- {text['tool']}: supabase-web-care {__version__}",
             f"- {text['source']}: {self.source}",
             f"- {text['target']}: {self.target}",
+            *([f"- {text['scope']}: {self.scope}"] if self.scope else []),
             "",
             text["summary"],
             "",

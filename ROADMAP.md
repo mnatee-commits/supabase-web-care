@@ -25,6 +25,7 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.18 | Fixes from an outside review: function overloads, TLS for database connections, password variables, build output, `pip install .` | Test suite; the changed catalog checks ran on a real project |
 | 1.19 | Fixes from a second outside review: views and declared tables in `table_writes`, `hostaddr`, renamed functions, SARIF placement, release workflow | Test suite; the changed checks ran on a real project |
 | 1.20 | Extension schemas the API roles may reach (pg_net, Vault, pg_cron) | Yes: found the pg_net grant on a real project |
+| 1.21 | Focused runs (`--focus`, `--profile`) | Test suite, including a focused run against the test database |
 
 ## In progress
 
@@ -37,21 +38,16 @@ Nothing at the moment.
 2. **Exposed schemas read from the database.** Take the schemas the Data API serves
    from the `authenticator` role's `pgrst.db_schemas` setting instead of assuming
    `public`, and report views there without `security_invoker`.
-3. **Focused runs (asked for by the owner).** As the checks grow, run a part of them:
-   `--focus` with one or more areas (`functions`, `tables`, `storage`, `secrets`,
-   `extensions`, `auth`, `health`), and named sets such as `quick` (files only) and
-   `full`. Checks left out show as `NOT_RUN` with the reason, so a focused report is never
-   read as a whole one.
-4. **Storage per bucket.** Judge `storage.objects` policies bucket by bucket.
-5. **Platform settings** such as SSL enforcement and network restrictions. The
+3. **Storage per bucket.** Judge `storage.objects` policies bucket by bucket.
+4. **Platform settings** such as SSL enforcement and network restrictions. The
    Management API endpoints for these have not been checked yet.
-6. **Thai text for each finding's detail.** Headings are translated already.
-7. **A GitHub Action (`action.yml`) and a pre-commit hook**, so a site's repository can
+5. **Thai text for each finding's detail.** Headings are translated already.
+6. **A GitHub Action (`action.yml`) and a pre-commit hook**, so a site's repository can
    run the file checks in one line.
 
 ## Waiting on a decision
 
-8. **Probing as a signed-in test user.** Policies that exist but restrict too
+7. **Probing as a signed-in test user.** Policies that exist but restrict too
    little are a common cause of leaks, and only a signed-in request shows them.
    Signing in writes session rows, and may write an application's own audit
    rows, so this needs a design that the owner of each project accepts. Staging

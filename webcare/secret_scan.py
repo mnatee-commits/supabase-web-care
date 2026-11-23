@@ -36,6 +36,7 @@ SKIP_DIRS = frozenset(
         "webcare-output",
     }
 )
+TITLE = "Credentials left in the source tree"
 BUILD_DIRS = frozenset({"dist", "build", ".next", ".nuxt", ".svelte-kit"})
 DEFAULT_MAX_BYTES = 2_000_000
 
@@ -376,7 +377,7 @@ def run(
     max_bytes: int = DEFAULT_MAX_BYTES,
     include_build: bool = False,
 ) -> CheckResult:
-    result = CheckResult(id="secrets", title="Credentials left in the source tree")
+    result = CheckResult(id="secrets", title=TITLE)
     roots = [Path(root) for root in roots]
     missing = [str(root) for root in roots if not root.exists()]
     if missing:

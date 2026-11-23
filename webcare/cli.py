@@ -24,7 +24,7 @@ from typing import Optional, Sequence
 
 from . import (
     __version__, advisors, anon_probe, api_snapshot, auth_config, backups, baseline, functions_static, health, inventory, live, logs, pgrls_runner, secret_scan,
-    sarif, snapshot, storage_buckets, table_writes,
+    focus, sarif, snapshot, storage_buckets, table_writes,
 )
 from .model import ERROR, NOT_RUN, CheckResult, Refusal, severity_at_least
 from .report import DEFAULT_LANGUAGE, LANGUAGE_ENV, LANGUAGES, Report
@@ -166,6 +166,15 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="DAYS", help=f"how far back to look at scheduled-job runs (default: {health.DEFAULT_WINDOW_DAYS})",
     )
     check.add_argument("--skip", action="append", default=[], choices=["secrets", "static", "live", "probe"], help="leave a group of checks out; repeatable")
+    check.add_argument(
+        "--focus", action="append", default=[], metavar="AREA",
+        help="check only these areas, comma-separated or repeated: " + ", ".join(focus.AREAS)
+        + "; the rest is reported as NOT_RUN",
+    )
+    check.add_argument(
+        "--profile", choices=focus.PROFILES, default=None,
+        help="quick: files only, nothing live; full: every optional --via-api check on",
+    )
     check.add_argument("--pgrls-config", help="pgrls.toml with rule allowlists or severities")
     check.add_argument("--allow-pgrls-version-mismatch", action="store_true", help="run a pgrls release other than the reviewed one")
     check.add_argument("--out-dir", default=DEFAULT_OUT_DIR, help=f"where report.md and report.json go (default: {DEFAULT_OUT_DIR})")
@@ -743,6 +752,12 @@ def _apply_target_settings(args: argparse.Namespace) -> list[str]:
 def cmd_check(args: argparse.Namespace) -> int:
     switched = _apply_target_settings(args)
     skip = set(args.skip)
+    try:
+        plan = focus.Plan(focus.parse(args.focus), args.profile)
+    except ValueError as error:
+        print(f"refused: {error}", file=sys.stderr)
+        return EXIT_REFUSED
+    plan.prepare(args, skip)
     requested: set[str] = set()
     checks: list[CheckResult] = []
     repos = [Path(p) for p in (args.repo or ["."])]
@@ -817,6 +832,8 @@ def cmd_check(args: argparse.Namespace) -> int:
         reason = logs.NOT_ASKED if args.via_api else "the log summary is only read with --via-api --with-logs"
         checks.append(_not_run("health_logs", reason))
 
+    checks = plan.apply(checks, requested, args.lang, {"secrets": secret_scan.TITLE, **TITLES})
+
     if args.write_baseline:
         try:
             count = baseline.write(Path(args.write_baseline), checks)
@@ -836,7 +853,8 @@ def cmd_check(args: argparse.Namespace) -> int:
         for check in checks:
             if check.id in switched and check.status != NOT_RUN:
                 check.notes.append("switched on by the target's `checks` in the target file")
-    report = Report(checks=checks, source=source, target=target_text, requested=requested, lang=args.lang)
+    report = Report(checks=checks, source=source, target=target_text, requested=requested, lang=args.lang,
+                    scope=plan.describe(args.lang))
     try:
         written = report.write(Path(args.out_dir))
     except OSError as error:

@@ -64,6 +64,10 @@ the example workflow in `docs/examples/`. `--sarif` also writes `report.sarif`, 
 code scanning can show findings on the lines of a pull request. What has and has not been verified
 against a real system is listed at the end of [docs/OFFLINE_VM.md](docs/OFFLINE_VM.md).
 
+`--focus functions,tables` (or any of `secrets`, `storage`, `extensions`, `auth`,
+`advisors`, `health`) checks only those areas; `--profile quick` checks files only.
+What is left out is listed as `NOT_RUN`.
+
 `report.md` is written in English by default; pass `--lang th` (or set `WEBCARE_LANG=th`) for Thai.
 
 What is done, in progress and planned is in [ROADMAP.md](ROADMAP.md).
