@@ -25,12 +25,13 @@ AREAS: dict[str, Area] = {
     "functions": Area(
         frozenset({"functions_static", "functions_live", "extra_live"}),
         frozenset({"secdef_trusts_current_user", "default_function_privileges",
-                   "default_function_privileges_platform"}),
+                   "default_function_privileges_platform", "secdef_takes_user_id"}),
     ),
     "tables": Area(
         frozenset({"rls_static", "rls_live", "table_writes", "extra_live", "anon_probe", "data_api"}),
         frozenset({"update_without_select", "auth_role_deprecated", "default_table_privileges",
-                   "view_runs_as_owner", "schema_usable_but_unchecked", "matview_readable_by_api_roles"}),
+                   "view_runs_as_owner", "schema_usable_but_unchecked", "matview_readable_by_api_roles",
+                   "policy_any_signed_in"}),
         optional=("with_data_api",),
     ),
     "storage": Area(

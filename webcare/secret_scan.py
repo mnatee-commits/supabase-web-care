@@ -266,6 +266,33 @@ RULES: tuple[Rule, ...] = (
         re.compile(r"\b[sr]k_live_[A-Za-z0-9]{16,}\b"),
         _fixed("stripe_live_key", "high", "Stripe live secret key"),
     ),
+    # Keys of services a Supabase app often calls. Formats as the providers publish them.
+    Rule(
+        re.compile(r"(?<![A-Za-z0-9_-])sk-ant-[A-Za-z0-9_-]{24,}"),
+        _fixed("anthropic_api_key", "high", "Anthropic API key"),
+    ),
+    Rule(
+        re.compile(r"(?<![A-Za-z0-9_-])sk-(?:(?:proj|svcacct|admin)-[A-Za-z0-9_-]{24,}"
+                   r"|[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20})"),
+        _fixed("openai_api_key", "high", "OpenAI API key"),
+    ),
+    Rule(
+        re.compile(r"(?<![A-Za-z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}(?![0-9A-Za-z])"),
+        _fixed("aws_access_key_id", "medium", "AWS access key id (the secret key that goes with it is not checked for)"),
+    ),
+    Rule(
+        re.compile(r"(?<![A-Za-z0-9_])(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,})"),
+        _fixed("github_token", "high", "GitHub token"),
+    ),
+    Rule(
+        re.compile(r"(?<![A-Za-z0-9_.-])SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}"),
+        _fixed("sendgrid_api_key", "high", "SendGrid API key"),
+    ),
+    Rule(
+        re.compile(r"(?<![A-Za-z0-9_-])AIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])"),
+        _fixed("google_api_key", "low",
+               "Google API key: public for Firebase or Maps when restricted, secret for Gemini and paid APIs"),
+    ),
 )
 
 

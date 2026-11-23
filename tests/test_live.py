@@ -26,6 +26,8 @@ def test_extra_checks_file_holds_only_selects():
         "view_runs_as_owner",
         "schema_usable_but_unchecked",
         "matview_readable_by_api_roles",
+        "secdef_takes_user_id",
+        "policy_any_signed_in",
     ]
 
 
@@ -113,6 +115,7 @@ def test_extra_checks_on_both_schemas(pg):
     assert {(f.rule, f.location) for f in bad.findings} == {
         ("update_without_select", "public.docs.docs_update_own"),
         ("auth_role_deprecated", "public.tickets.tickets_signed_in"),
+        ("policy_any_signed_in", "public.tickets.tickets_signed_in"),
         ("storage_upsert_incomplete", "storage.objects (role authenticated)"),
         ("view_runs_as_owner", "public.orders_view"),  # a view anon reads, without security_invoker
     }
@@ -222,6 +225,14 @@ def test_guard_that_trusts_current_user_and_default_privileges_are_found(pg):
         connection.close()
     grouped = _by_rule(result)
     assert [f.location for f in grouped["secdef_trusts_current_user"]] == ["private.guard()"]
+    # trusts the id it is handed; the ones that ask who is calling, directly or through a
+    # helper, and the one closed to the API roles are left alone
+    takes = grouped["secdef_takes_user_id"]
+    assert [f.location for f in takes] == ["public.notes_of(p_user_id uuid)"]
+    assert "p_user_id" in takes[0].message and "authenticated may call" in takes[0].message and "anon and" not in takes[0].message
+    signed_in = {f.location: f.message for f in grouped["policy_any_signed_in"]}
+    assert sorted(signed_in) == ["public.notes.members_add", "public.notes.members_read"]
+    assert "(USING)" in signed_in["public.notes.members_read"] and "(WITH CHECK)" in signed_in["public.notes.members_add"]
     defaults = grouped["default_function_privileges"]
     assert len(defaults) == 1 and defaults[0].location.startswith("public (functions created by ")
     assert "anon, authenticated" in defaults[0].message
@@ -262,6 +273,7 @@ def test_comments_and_strings_naming_current_user_do_not_count(pg):
         connection.close()
     grouped = _by_rule(result)
     assert "secdef_trusts_current_user" not in grouped
+    assert "secdef_takes_user_id" not in grouped and "policy_any_signed_in" not in grouped
     assert "default_function_privileges" not in grouped
     assert "default_table_privileges" not in grouped
     assert not any(rule.startswith(("extension_", "realtime_", "view_runs")) for rule in grouped)

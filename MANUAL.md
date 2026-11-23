@@ -267,8 +267,8 @@ python -m webcare check --snapshot staging.json --target <target name> --skip se
 | Area | What it covers |
 |---|---|
 | `secrets` | credentials left in the source tree |
-| `functions` | who may call `SECURITY DEFINER` functions, from files and the catalog; guards that trust `current_user`; default privileges of new functions |
-| `tables` | RLS policies (pgrls), table write privileges, default privileges of new tables, views that run as their owner, schemas left out of the checks, what an anonymous visitor can read (switches `--with-data-api` on) |
+| `functions` | who may call `SECURITY DEFINER` functions, from files and the catalog; guards that trust `current_user`; functions that take a user id without asking who is calling; default privileges of new functions |
+| `tables` | RLS policies (pgrls), table write privileges, default privileges of new tables, policies open to every signed-in user, views that run as their owner, schemas left out of the checks, what an anonymous visitor can read (switches `--with-data-api` on) |
 | `edge` | Edge Functions from files: `verify_jwt`, the service role key without a caller check, any-origin CORS |
 | `storage` | Storage policies and buckets |
 | `extensions` | pg_net, Vault and pg_cron reachable by the API roles |

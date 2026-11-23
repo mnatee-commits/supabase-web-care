@@ -491,6 +491,118 @@ select jsonb_build_object(
         order by 1
         limit 500
       ) q
+    ), '[]'::jsonb),
+    'secdef_takes_user_id', coalesce((
+      select jsonb_agg(to_jsonb(q)) from (
+        select
+          quote_ident(n.nspname) || '.' || quote_ident(p.proname)
+            || '(' || pg_catalog.pg_get_function_identity_arguments(p.oid) || ')' as location,
+          concat_ws(' and ',
+            case when pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
+                      and pg_catalog.has_schema_privilege('anon', n.oid, 'USAGE') then 'anon' end,
+            case when pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
+                      and pg_catalog.has_schema_privilege('authenticated', n.oid, 'USAGE') then 'authenticated' end)
+            || ' may call this SECURITY DEFINER function and choose its ' || ids.names
+            || '; nothing in it asks who is calling, so a caller could pass another user''s id. '
+            || 'Use auth.uid() inside the function, or check that the id is the caller''s' as detail
+        from pg_catalog.pg_proc p
+        join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+        join pg_catalog.pg_language l on l.oid = p.prolang
+        cross join lateral (
+          select string_agg(a.name, ', ' order by a.i) as names
+          from unnest(p.proargnames) with ordinality as a(name, i)
+          join unnest(coalesce(p.proallargtypes, p.proargtypes::oid[])) with ordinality as t(typ, i) using (i)
+          where coalesce(p.proargmodes[a.i], 'i') in ('i', 'b')
+            and t.typ in ('uuid'::regtype, 'text'::regtype, 'character varying'::regtype)
+            and a.name ~* '^(p|in|arg|v|target|the)?_*(target_)?(user|usr|owner|profile|member|account|staff|person|author|customer)_?(id|uuid|uid)$'
+        ) ids
+        where n.nspname = any(array['public']::text[])
+          and p.prosecdef
+          and p.prokind = 'f'
+          and l.lanname in ('sql', 'plpgsql')
+          and ids.names is not null
+          and pg_catalog.to_regrole('anon') is not null
+          and pg_catalog.to_regrole('authenticated') is not null
+          and ((pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
+                and pg_catalog.has_schema_privilege('anon', n.oid, 'USAGE'))
+            or (pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
+                and pg_catalog.has_schema_privilege('authenticated', n.oid, 'USAGE')))
+          and regexp_replace(
+                p.prosrc,
+                '--[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/', '', 'g'
+              ) !~* 'auth\.(uid|jwt)\s*\(|request\.jwt'
+          and not pg_catalog.texticregexeq(
+                p.prosrc,
+                '\m(' || (
+                  select coalesce(string_agg(distinct k.name, '|'), '$^')
+                  from (
+                    select regexp_replace(p.proname::text, '([^a-z0-9_])', '\\\1', 'gi') as name
+                    from pg_catalog.pg_proc p
+                    join pg_catalog.pg_namespace gn on gn.oid = p.pronamespace
+                    where gn.nspname !~ '^pg_' and gn.nspname not in ('information_schema', 'auth')
+                      and pg_catalog.texticregexeq(
+                            p.prosrc,
+                            'auth\.(uid|jwt)\s*\(|request\.jwt')
+                    union
+                    select regexp_replace(p.proname::text, '([^a-z0-9_])', '\\\1', 'gi')
+                    from pg_catalog.pg_proc p
+                    join pg_catalog.pg_namespace gn on gn.oid = p.pronamespace
+                    where gn.nspname !~ '^pg_' and gn.nspname not in ('information_schema', 'auth')
+                      and pg_catalog.texticregexeq(
+                            p.prosrc,
+                            '\m(' || (
+                              select coalesce(string_agg(distinct regexp_replace(p.proname::text, '([^a-z0-9_])', '\\\1', 'gi'), '|'), '$^')
+                              from pg_catalog.pg_proc p
+                              join pg_catalog.pg_namespace gn on gn.oid = p.pronamespace
+                              where gn.nspname !~ '^pg_' and gn.nspname not in ('information_schema', 'auth')
+                                and pg_catalog.texticregexeq(
+                                      p.prosrc,
+                                      'auth\.(uid|jwt)\s*\(|request\.jwt')
+                            ) || ')\s*\(')
+                  ) k
+                ) || ')\s*\(')
+        order by 1
+        limit 500
+      ) q
+    ), '[]'::jsonb),
+    'policy_any_signed_in', coalesce((
+      select jsonb_agg(to_jsonb(q)) from (
+        select
+          quote_ident(p.schemaname) || '.' || quote_ident(p.tablename) || '.' || quote_ident(p.policyname)
+            as location,
+          p.cmd || ': the only condition is that the caller is signed in ('
+            || concat_ws(' and ',
+                 case when c.using_open then 'USING' end,
+                 case when c.check_open then 'WITH CHECK' end)
+            || '), so every signed-in user gets every row. Compare a column with auth.uid(), or '
+            || 'declare the table as meant for all members' as detail
+        from pg_catalog.pg_policies p
+        cross join lateral (
+          select
+            translate(lower(coalesce(p.qual, '')), E' ()\n\t', '') in (
+              'auth.uidisnotnull', 'selectauth.uidasuidisnotnull',
+              'auth.role=''authenticated''::text', 'selectauth.roleasrole=''authenticated''::text') as using_open,
+            translate(lower(coalesce(p.with_check, '')), E' ()\n\t', '') in (
+              'auth.uidisnotnull', 'selectauth.uidasuidisnotnull',
+              'auth.role=''authenticated''::text', 'selectauth.roleasrole=''authenticated''::text') as check_open
+        ) c
+        cross join lateral (
+          select (quote_ident(p.schemaname) || '.' || quote_ident(p.tablename))::regclass as oid
+        ) t
+        where p.schemaname = any(array['public']::text[])
+          and p.permissive = 'PERMISSIVE'
+          and (c.using_open or c.check_open)
+          and pg_catalog.to_regrole('anon') is not null
+          and pg_catalog.to_regrole('authenticated') is not null
+          and exists (
+            select 1
+            from unnest(array['anon', 'authenticated']) r(role_name),
+                 unnest(case p.cmd when 'ALL' then array['SELECT', 'INSERT', 'UPDATE', 'DELETE']
+                                   else array[p.cmd] end) x(privilege)
+            where pg_catalog.has_table_privilege(r.role_name, t.oid, x.privilege))
+        order by 1
+        limit 500
+      ) q
     ), '[]'::jsonb)
   )
 ) as snapshot;

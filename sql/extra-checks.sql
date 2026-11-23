@@ -495,3 +495,132 @@ where n.nspname = any(%(schemas)s)
   and (pg_catalog.has_table_privilege('anon', c.oid, 'SELECT')
        or pg_catalog.has_table_privilege('authenticated', c.oid, 'SELECT'))
 order by 1;
+
+-- check: secdef_takes_user_id
+-- severity: medium
+-- title: SECURITY DEFINER function takes a user id from its caller
+-- why: Such a function skips RLS. If it acts on the user id it is handed instead of
+--      asking who is calling (auth.uid()), any caller can pass someone else's id and
+--      read or change that person's data. Reported when an API role may call the
+--      function, it has an argument named like a user id, and neither its body nor a
+--      function it calls (up to two calls deep) mentions auth.uid(), auth.jwt() or the
+--      request's JWT claims.
+--      A sign, not proof: read the function. Only names and a yes/no about the body
+--      leave the database, never the body itself.
+select
+  quote_ident(n.nspname) || '.' || quote_ident(p.proname)
+    || '(' || pg_catalog.pg_get_function_identity_arguments(p.oid) || ')' as location,
+  concat_ws(' and ',
+    case when pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
+              and pg_catalog.has_schema_privilege('anon', n.oid, 'USAGE') then 'anon' end,
+    case when pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
+              and pg_catalog.has_schema_privilege('authenticated', n.oid, 'USAGE') then 'authenticated' end)
+    || ' may call this SECURITY DEFINER function and choose its ' || ids.names
+    || '; nothing in it asks who is calling, so a caller could pass another user''s id. '
+    || 'Use auth.uid() inside the function, or check that the id is the caller''s' as detail
+from pg_catalog.pg_proc p
+join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+join pg_catalog.pg_language l on l.oid = p.prolang
+cross join lateral (
+  select string_agg(a.name, ', ' order by a.i) as names
+  from unnest(p.proargnames) with ordinality as a(name, i)
+  join unnest(coalesce(p.proallargtypes, p.proargtypes::oid[])) with ordinality as t(typ, i) using (i)
+  where coalesce(p.proargmodes[a.i], 'i') in ('i', 'b')
+    and t.typ in ('uuid'::regtype, 'text'::regtype, 'character varying'::regtype)
+    and a.name ~* '^(p|in|arg|v|target|the)?_*(target_)?(user|usr|owner|profile|member|account|staff|person|author|customer)_?(id|uuid|uid)$'
+) ids
+where n.nspname = any(%(schemas)s)
+  and p.prosecdef
+  and p.prokind = 'f'
+  and l.lanname in ('sql', 'plpgsql')
+  and ids.names is not null
+  and pg_catalog.to_regrole('anon') is not null
+  and pg_catalog.to_regrole('authenticated') is not null
+  and ((pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
+        and pg_catalog.has_schema_privilege('anon', n.oid, 'USAGE'))
+    or (pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')
+        and pg_catalog.has_schema_privilege('authenticated', n.oid, 'USAGE')))
+  -- comments are dropped first, so a note that mentions auth.uid() does not count as a check
+  and regexp_replace(
+        p.prosrc,
+        '--[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/', '', 'g'
+      ) !~* 'auth\.(uid|jwt)\s*\(|request\.jwt'
+  -- ...and it calls no function that asks who is calling, itself or through one more call
+  -- (a guard such as require_owner() that relies on a current_user_id() helper). The names
+  -- of those functions are gathered once into one pattern, so each body is matched once.
+  and not pg_catalog.texticregexeq(
+        p.prosrc,
+        '\m(' || (
+          select coalesce(string_agg(distinct k.name, '|'), '$^')
+          from (
+            select regexp_replace(p.proname::text, '([^a-z0-9_])', '\\\1', 'gi') as name
+            from pg_catalog.pg_proc p
+            join pg_catalog.pg_namespace gn on gn.oid = p.pronamespace
+            where gn.nspname !~ '^pg_' and gn.nspname not in ('information_schema', 'auth')
+              and pg_catalog.texticregexeq(
+                    p.prosrc,
+                    'auth\.(uid|jwt)\s*\(|request\.jwt')
+            union
+            select regexp_replace(p.proname::text, '([^a-z0-9_])', '\\\1', 'gi')
+            from pg_catalog.pg_proc p
+            join pg_catalog.pg_namespace gn on gn.oid = p.pronamespace
+            where gn.nspname !~ '^pg_' and gn.nspname not in ('information_schema', 'auth')
+              and pg_catalog.texticregexeq(
+                    p.prosrc,
+                    '\m(' || (
+                      select coalesce(string_agg(distinct regexp_replace(p.proname::text, '([^a-z0-9_])', '\\\1', 'gi'), '|'), '$^')
+                      from pg_catalog.pg_proc p
+                      join pg_catalog.pg_namespace gn on gn.oid = p.pronamespace
+                      where gn.nspname !~ '^pg_' and gn.nspname not in ('information_schema', 'auth')
+                        and pg_catalog.texticregexeq(
+                              p.prosrc,
+                              'auth\.(uid|jwt)\s*\(|request\.jwt')
+                    ) || ')\s*\(')
+          ) k
+        ) || ')\s*\(')
+order by 1;
+
+-- check: policy_any_signed_in
+-- severity: medium
+-- title: Policy lets every signed-in user in
+-- why: A policy whose whole condition is "the caller is signed in" (auth.uid() is not
+--      null, or auth.role() = 'authenticated') does not ask whose row it is. Anyone who
+--      signs up reads, or writes, every row; with open sign-up that is close to public.
+--      Right for data every member may see, wrong for rows that belong to one user.
+--      Left out when no API role holds the privilege on the table, since nothing is open.
+select
+  quote_ident(p.schemaname) || '.' || quote_ident(p.tablename) || '.' || quote_ident(p.policyname)
+    as location,
+  p.cmd || ': the only condition is that the caller is signed in ('
+    || concat_ws(' and ',
+         case when c.using_open then 'USING' end,
+         case when c.check_open then 'WITH CHECK' end)
+    || '), so every signed-in user gets every row. Compare a column with auth.uid(), or '
+    || 'declare the table as meant for all members' as detail
+from pg_catalog.pg_policies p
+cross join lateral (
+  select
+    translate(lower(coalesce(p.qual, '')), E' ()\n\t', '') in (
+      'auth.uidisnotnull', 'selectauth.uidasuidisnotnull',
+      'auth.role=''authenticated''::text', 'selectauth.roleasrole=''authenticated''::text') as using_open,
+    translate(lower(coalesce(p.with_check, '')), E' ()\n\t', '') in (
+      'auth.uidisnotnull', 'selectauth.uidasuidisnotnull',
+      'auth.role=''authenticated''::text', 'selectauth.roleasrole=''authenticated''::text') as check_open
+) c
+cross join lateral (
+  select (quote_ident(p.schemaname) || '.' || quote_ident(p.tablename))::regclass as oid
+) t
+where p.schemaname = any(%(schemas)s)
+  and p.permissive = 'PERMISSIVE'
+  and (c.using_open or c.check_open)
+  and pg_catalog.to_regrole('anon') is not null
+  and pg_catalog.to_regrole('authenticated') is not null
+  -- only where an API role holds the privilege the policy is about; a policy on a table
+  -- the API roles cannot touch (reached through functions only) opens nothing
+  and exists (
+    select 1
+    from unnest(array['anon', 'authenticated']) r(role_name),
+         unnest(case p.cmd when 'ALL' then array['SELECT', 'INSERT', 'UPDATE', 'DELETE']
+                           else array[p.cmd] end) x(privilege)
+    where pg_catalog.has_table_privilege(r.role_name, t.oid, x.privilege))
+order by 1;

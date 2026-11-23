@@ -147,3 +147,22 @@ def test_several_roots_are_named_even_the_current_directory(tmp_path, monkeypatc
     monkeypatch.chdir(first)
     locations = sorted(f.location for f in secret_scan.run([Path("."), second]).findings)
     assert locations == ["other/k.txt:1", "site/k.txt:1"]
+
+
+def test_keys_of_other_services():
+    letters = "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0"
+    assert rules("sk-" + "ant-" + letters) == {"anthropic_api_key": "high"}
+    assert rules("sk-" + "proj-" + letters) == {"openai_api_key": "high"}
+    assert rules("sk-" + letters[:20] + "T3Blbk" + "FJ" + letters[:20]) == {"openai_api_key": "high"}
+    assert rules("AK" + "IA" + "ABCDEFGHIJKLMNOP") == {"aws_access_key_id": "medium"}
+    assert rules("gh" + "p_" + letters[:36]) == {"github_token": "high"}
+    assert rules("github" + "_pat_" + letters + "_" + letters[:10]) == {"github_token": "high"}
+    assert rules("S" + "G." + letters[:22] + "." + letters) == {"sendgrid_api_key": "high"}
+    assert rules("AI" + "za" + letters[:35]) == {"google_api_key": "low"}
+
+
+def test_words_that_only_look_like_keys_are_left_alone():
+    for text in ("task-list-item-container-with-a-long-name", "risk-proj-" + "a" * 30,
+                 "class=\"desk-ant-" + "b" * 30 + "\"", "MAKIAABCDEFGHIJKLMNOPQ", "xAIza" + "c" * 35,
+                 "sk-proj-short", "MSG.hello.world"):
+        assert rules(text) == {}, text

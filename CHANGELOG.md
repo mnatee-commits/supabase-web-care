@@ -3,6 +3,26 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.38.0
+Three additions suggested by reading other open-source checkers (written anew here).
+- New catalog check `secdef_takes_user_id` (medium): a `SECURITY DEFINER` function an API
+  role may call that takes an argument named like a user id, where neither its body nor a
+  function it calls, up to two calls deep, asks who is calling (`auth.uid()`, `auth.jwt()`,
+  the request's JWT claims). Such a function may act on whichever id it is handed. A sign,
+  not proof. Only names and a yes/no about the body leave the database.
+- New catalog check `policy_any_signed_in` (medium): a policy whose whole condition is that
+  the caller is signed in (`auth.uid() is not null`, `auth.role() = 'authenticated'`), on a
+  table where an API role holds the privilege the policy is about.
+- The credential scan also knows keys of OpenAI, Anthropic, GitHub and SendGrid (high), AWS
+  access key ids (medium) and Google API keys (low: public for Firebase or Maps when
+  restricted, secret for Gemini).
+
+Both catalog checks ran read-only on a real project (523 `SECURITY DEFINER` functions, 72
+policies) before release, and that run changed them: the first version of each raised one
+finding that was not a real hole. A guard reached through a helper of a helper is now
+followed, and a policy on a table the API roles hold no privilege on is left out. A slower
+form of the function check took over a minute there; the released one takes under a second.
+
 ## 1.37.0
 The database health check (`db_health`) also looks at resources, in the same single
 read-only statement:

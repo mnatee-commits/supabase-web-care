@@ -93,3 +93,53 @@ create policy members_all on realtime.messages for all to authenticated using (t
 -- A materialized view the API roles may read: it has no RLS and no security_invoker.
 create materialized view public.cached_totals as select count(*) as n from public.secret_notes;
 grant select on public.cached_totals to anon;
+
+-- SECURITY DEFINER functions that take a user id. The first trusts it; the second asks who
+-- is calling; the third leaves that to a helper; the fourth is closed to the API roles.
+create table public.notes (id int primary key, user_id uuid, body text);
+alter table public.notes enable row level security;
+create function public.notes_of(p_user_id uuid) returns setof public.notes
+language sql security definer set search_path = ''
+as $$ select * from public.notes where user_id = p_user_id /* should compare with auth.uid() */ $$;
+create function public.my_notes(p_user_id uuid) returns setof public.notes
+language sql security definer set search_path = ''
+as $$ select * from public.notes where user_id = p_user_id and p_user_id = auth.uid() $$;
+create function private.is_self(target uuid) returns boolean
+language sql stable set search_path = ''
+as $$ select target = auth.uid() $$;
+create function public.notes_checked(user_id uuid) returns setof public.notes
+language plpgsql security definer set search_path = ''
+as $$ begin
+  if not private.is_self(user_id) then raise exception 'not yours'; end if;
+  return query select * from public.notes n where n.user_id = notes_checked.user_id;
+end $$;
+-- comment only: auth.uid() is not asked in notes_of
+revoke all on function public.notes_of(uuid), public.my_notes(uuid), public.notes_checked(uuid) from public, anon;
+grant execute on function public.notes_of(uuid), public.my_notes(uuid), public.notes_checked(uuid) to authenticated;
+-- The guard is two calls away: require_self() -> current_user_id() -> auth.uid().
+create function private.current_user_id() returns uuid language sql stable set search_path = ''
+as $$ select auth.uid() $$;
+create function private.require_self(target uuid) returns void language plpgsql set search_path = ''
+as $$ begin if target is distinct from private.current_user_id() then raise exception 'not yours'; end if; end $$;
+create function public.notes_guarded(p_user_id uuid) returns setof public.notes
+language plpgsql security definer set search_path = ''
+as $$ begin perform private.require_self(p_user_id); return query select * from public.notes where user_id = p_user_id; end $$;
+revoke all on function public.notes_guarded(uuid) from public, anon;
+grant execute on function public.notes_guarded(uuid) to authenticated;
+create function public.notes_admin(p_user_id uuid) returns setof public.notes
+language sql security definer set search_path = ''
+as $$ select * from public.notes where user_id = p_user_id $$;
+revoke all on function public.notes_admin(uuid) from public, anon, authenticated;
+
+-- Policies whose whole condition is "signed in", next to one that asks whose row it is.
+create policy members_read on public.notes for select to authenticated using (auth.uid() is not null);
+create policy members_add on public.notes for insert to authenticated
+  with check ((select auth.role()) = 'authenticated');
+create policy own_rows on public.notes for update to authenticated
+  using (auth.uid() is not null and user_id = auth.uid());
+grant select, insert on public.notes to authenticated;
+-- The same kind of policy on a table the API roles hold no privilege on: nothing is open.
+create table public.notes_rpc_only (id int primary key, user_id uuid);
+alter table public.notes_rpc_only enable row level security;
+revoke all on public.notes_rpc_only from anon, authenticated;
+create policy signed_in_add on public.notes_rpc_only for insert to authenticated with check (auth.uid() is not null);
