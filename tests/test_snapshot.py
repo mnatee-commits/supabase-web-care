@@ -218,7 +218,7 @@ def test_snapshot_taken_by_the_audit_role_gives_the_same_findings_as_a_live_run(
         assert not any("not in this snapshot" in note for note in from_file[0].notes)
 
     bad = snapshot.load(tmp_path / "fbad.json")
-    assert len(bad["definer_functions"]) == 10 and bad["anon_role_exists"] is True
+    assert len(bad["definer_functions"]) == 11 and bad["anon_role_exists"] is True
     text = (tmp_path / "fbad.json").read_text()
     assert "ACCESS_DENIED" not in text and "raise exception" not in text  # no function bodies
 

@@ -3,6 +3,20 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.39.1
+Four edge cases the reviewer found in 1.39.0 (Gemini, 24 November 2026).
+- `policy_always_true` no longer reports a write hole for a `FOR ALL` policy on a table
+  the API roles may only read: it counts write privileges only, and
+  `policy_read_always_true` takes a `FOR ALL` policy where no role it applies to can write.
+- "In short" counts a policy open to `public` (lower case in a policy's role list) as
+  reaching visitors.
+- `secdef_takes_user_id` reads the calling function without its comments when it looks for
+  a guard's name, so a guard call that was commented out no longer clears the function.
+- Edge Functions: `verify(...)` counts as a caller check only when it is given a token,
+  signature, secret or key; a helper's guard that leaves the work to another function of
+  the same file is followed. The older key rules (Supabase secret, Stripe, Resend, Brevo)
+  also drop documentation examples and filler values.
+
 ## 1.39.0
 Fixes from the fifth outside review (Gemini, 23 November 2026, of 1.34.1 to 1.38.0).
 - Edge Functions: `verify_jwt` from `supabase/config.toml` now reaches a folder named with

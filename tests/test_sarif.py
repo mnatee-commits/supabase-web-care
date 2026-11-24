@@ -103,7 +103,7 @@ def test_same_named_roots_are_told_apart(tmp_path, monkeypatch):
     one, two = tmp_path / "apps" / "api", tmp_path / "services" / "api"
     for root in (one, two):
         root.mkdir(parents=True)
-        (root / "k.txt").write_text(f"sb_secret_{'c' * 24}\n")
+        (root / "k.txt").write_text(f"{'sb_' + 'secret_' + 'C1b2C3d4E5f6G7h8I9j0K1l2'}\n")
     monkeypatch.chdir(tmp_path)
     found = secret_scan.run([one, two]).findings
     assert sorted(f.location for f in found) == ["apps/api/k.txt:1", "services/api/k.txt:1"]

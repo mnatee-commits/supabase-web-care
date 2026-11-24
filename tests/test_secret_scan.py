@@ -133,7 +133,7 @@ def test_database_password_variables():
 
 def test_build_output_is_skipped_unless_asked(tmp_path):
     (tmp_path / "dist").mkdir()
-    (tmp_path / "dist" / "app.js").write_text(f"const k = 'sb_secret_{'a' * 24}';\n")
+    (tmp_path / "dist" / "app.js").write_text(f"const k = '{'sb_' + 'secret_' + 'A1b2C3d4E5f6G7h8I9j0K1l2'}';\n")
     assert secret_scan.run([tmp_path]).findings == []
     found = secret_scan.run([tmp_path], include_build=True).findings
     assert [f.location for f in found] == ["dist/app.js:1"]
@@ -143,7 +143,7 @@ def test_several_roots_are_named_even_the_current_directory(tmp_path, monkeypatc
     first, second = tmp_path / "site", tmp_path / "other"
     for root in (first, second):
         root.mkdir()
-        (root / "k.txt").write_text(f"sb_secret_{'b' * 24}\n")
+        (root / "k.txt").write_text(f"{'sb_' + 'secret_' + 'B1b2C3d4E5f6G7h8I9j0K1l2'}\n")
     monkeypatch.chdir(first)
     locations = sorted(f.location for f in secret_scan.run([Path("."), second]).findings)
     assert locations == ["other/k.txt:1", "site/k.txt:1"]
@@ -170,5 +170,6 @@ def test_words_that_only_look_like_keys_are_left_alone():
 
 def test_documented_examples_and_filler_values_are_not_keys():
     for text in ("AK" + "IA" + "IOSFODNN7EXAMPLE", "sk-" + "proj-" + "x" * 32, "sk-" + "ant-" + "0" * 40,
-                 "gh" + "p_" + "ab" * 20, "AI" + "za" + "X" * 35):
+                 "gh" + "p_" + "ab" * 20, "AI" + "za" + "X" * 35, "sk_" + "live_" + "x" * 24,
+                 "sb_" + "secret_" + "your_key_goes_here_0001", "re_" + "example_" + "0" * 24):
         assert rules(text) == {}, text

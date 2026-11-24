@@ -1,6 +1,6 @@
 """supabase-web-care: read-only checks for Supabase and Postgres-backed sites."""
 
-__version__ = "1.39.0"
+__version__ = "1.39.1"
 
 # The pgrls release this toolkit was reviewed and tested against. The wheel on
 # PyPI for this version was compared file-by-file with the upstream v0.57.1

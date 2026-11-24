@@ -210,7 +210,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         re.compile(r"\bsb_secret_[A-Za-z0-9_-]{16,}"),
-        _fixed("supabase_secret_key", "high", "Supabase secret API key"),
+        _key("supabase_secret_key", "high", "Supabase secret API key"),
     ),
     Rule(
         re.compile(r"\bsb_publishable_[A-Za-z0-9_-]{16,}"),
@@ -269,15 +269,15 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         re.compile(r"\bxkeysib-[a-f0-9]{64}-[A-Za-z0-9]{16}\b"),
-        _fixed("brevo_api_key", "high", "Brevo API key"),
+        _key("brevo_api_key", "high", "Brevo API key"),
     ),
     Rule(
         re.compile(r"\bre_[A-Za-z0-9]{6,}_[A-Za-z0-9]{20,}\b"),
-        _fixed("resend_api_key", "high", "Resend API key"),
+        _key("resend_api_key", "high", "Resend API key"),
     ),
     Rule(
         re.compile(r"\b[sr]k_live_[A-Za-z0-9]{16,}\b"),
-        _fixed("stripe_live_key", "high", "Stripe live secret key"),
+        _key("stripe_live_key", "high", "Stripe live secret key"),
     ),
     # Keys of services a Supabase app often calls. Formats as the providers publish them.
     Rule(

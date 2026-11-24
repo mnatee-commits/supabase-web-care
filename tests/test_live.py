@@ -231,12 +231,16 @@ def test_guard_that_trusts_current_user_and_default_privileges_are_found(pg):
     # trusts the id it is handed; the ones that ask who is calling, directly or through a
     # helper, and the one closed to the API roles are left alone
     takes = grouped["secdef_takes_user_id"]
-    assert [f.location for f in takes] == ["public.notes_by_member(member_id bigint)", "public.notes_of(p_user_id uuid)"]
+    assert [f.location for f in takes] == [
+        "public.notes_by_member(member_id bigint)", "public.notes_of(p_user_id uuid)",
+        "public.notes_unguarded(p_user_id uuid)"]
     takes = takes[1:]
     assert "p_user_id" in takes[0].message and "authenticated may call" in takes[0].message and "anon and" not in takes[0].message
     signed_in = {f.location: f.message for f in grouped["policy_any_signed_in"]}
     assert sorted(signed_in) == ["public.notes.members_add", "public.notes.members_read"]
     always = {f.location: f.message for f in grouped["policy_always_true"]}
+    reads = {f.location: f.message for f in grouped["policy_read_always_true"]}
+    assert list(reads) == ["public.ref_codes.ref_all"] and "ALL for public" in reads["public.ref_codes.ref_all"]
     assert list(always) == ["public.notes.all_open"] and "DELETE for authenticated: USING (true)" in always["public.notes.all_open"]
     assert "(USING)" in signed_in["public.notes.members_read"] and "(WITH CHECK)" in signed_in["public.notes.members_add"]
     defaults = grouped["default_function_privileges"]

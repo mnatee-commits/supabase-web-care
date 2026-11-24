@@ -18,7 +18,7 @@ def by_function(result):
 
 def test_each_kind_of_function_is_judged_from_its_files():
     result = edge_functions.run([EDGE])
-    assert result.status == "FINDINGS" and "6 Edge Functions" in result.evidence
+    assert result.status == "FINDINGS" and "8 Edge Functions" in result.evidence
     found = by_function(result)
     # verify_jwt off, service role, and the only "check" is inside a comment
     assert found["open-hook"] == [("edge_open_to_anyone", "high")]
@@ -33,6 +33,10 @@ def test_each_kind_of_function_is_judged_from_its_files():
     assert found["export-all"] == [("edge_service_role_no_caller_check", "medium")]
     # calls the helper's guard under another name: that is a check
     assert "my-profile" not in found
+    # the helper's guard leaves the work to a local function of the same file: still a check
+    assert "nested-guard" not in found
+    # a verify() that checks the shape of the body is not a caller check
+    assert found["shape-only"] == [("edge_service_role_no_caller_check", "medium")]
     assert any("admin-task" in note and "not named in config.toml" in note for note in result.notes)
     assert any("--no-verify-jwt" in note for note in result.notes)
 

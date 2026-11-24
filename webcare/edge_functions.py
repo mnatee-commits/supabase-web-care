@@ -37,7 +37,7 @@ _SERVICE_ROLE = re.compile(r"SUPABASE_SERVICE_ROLE_KEY|SERVICE_ROLE_KEY|SUPABASE
 # Calls that settle who the caller is, or that a shared secret or signature is right.
 _VERIFIES_CALLER = re.compile(
     r"\.auth\s*\.\s*getUser\s*\(|\.auth\s*\.\s*getClaims\s*\(|/auth/v1/user\b|\bjwtVerify\s*\(|"
-    r"\bverify\s*\(|\btimingSafeEqual\s*\(|\bconstructEvent(?:Async)?\s*\(|\bverifyWebhook\w*\s*\(|"
+    r"\bverify\s*\([^)\n]*(?:token|jwt|sign|secret|key|bearer|auth)|\btimingSafeEqual\s*\(|\bconstructEvent(?:Async)?\s*\(|\bverifyWebhook\w*\s*\(|"
     r"\bcrypto\s*\.\s*subtle\s*\.\s*verify\s*\(",
 )
 _READS_CREDENTIAL = re.compile(
@@ -173,7 +173,6 @@ def _first(pattern: "re.Pattern[str]", texts: list[tuple[Path, str]]) -> Optiona
 _IMPORT = re.compile(
     r"import\s+(?:type\s+)?(?P<names>[^;'\"`]*?)\s+from\s*[\"'`](?P<path>\.\.?/[^\"'`\n]*)[\"'`]", re.DOTALL
 )
-_EXPORT_START = re.compile(r"^\s*export\s", re.MULTILINE)
 
 
 def _imported_names(own_text: str, imported: Path, importer: Path) -> list[tuple[str, str]]:
@@ -192,16 +191,31 @@ def _imported_names(own_text: str, imported: Path, importer: Path) -> list[tuple
     return names
 
 
-def _definition(text: str, name: str) -> str:
-    """The exported block that defines `name` in a helper file: up to the next export."""
+_TOP_LEVEL = re.compile(r"^(?:export\s|(?:async\s+)?function\s|const\s|let\s|var\s|class\s)", re.MULTILINE)
+
+
+def _block(text: str, name: str, exported: bool) -> str:
+    """The top-level block that defines `name`: up to the next top-level declaration."""
     match = re.search(
-        r"^\s*export\s+(?:default\s+)?(?:async\s+)?(?:function\s*\*?|const|let|var|class)\s+" + re.escape(name) + r"\b",
+        r"^" + (r"export\s+(?:default\s+)?" if exported else r"")
+        + r"(?:async\s+)?(?:function\s*\*?|const|let|var|class)\s+" + re.escape(name) + r"\b",
         text, re.MULTILINE,
     )
     if not match:
         return ""
-    following = _EXPORT_START.search(text, match.end())
+    following = _TOP_LEVEL.search(text, match.end())
     return text[match.start(): following.start() if following else len(text)]
+
+
+def _definition(text: str, name: str) -> str:
+    """What an exported `name` in a helper file does: its own block, and the blocks of the
+    functions of the same file that it calls (one step, so a requireUser() that leaves the
+    work to a local getUserFromRequest() is still seen as a check)."""
+    block = _block(text, name, exported=True)
+    if not block:
+        return ""
+    called = set(re.findall(r"(?<![\w.$])([A-Za-z_$][\w$]*)\s*\(", block)) - {name}
+    return block + "".join(_block(text, other, exported=False) or _block(text, other, exported=True) for other in sorted(called))
 
 
 def judge(function: EdgeFunction) -> list[Finding]:

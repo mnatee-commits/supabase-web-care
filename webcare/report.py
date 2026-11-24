@@ -106,7 +106,9 @@ _VISITOR_RULES = frozenset({
     "secdef_public_execute", "log_anon_rpc_unexpected", "edge_open_to_anyone",
 })
 _VISITOR_PREFIXES = ("anon_", "storage_anon_", "secdef_anon_")
-_VISITOR_ROLE = re.compile(r"\banon\b|\bPUBLIC\b")
+# "PUBLIC" in capitals, as privileges are written, so a schema named public does not count;
+# a policy's role list is lower case ("DELETE for public:", "ALL for staff, public:").
+_VISITOR_ROLE = re.compile(r"\banon\b|\bPUBLIC\b|\bfor (?:[^:\n]*,\s*)?public\b")
 
 
 def _reaches_visitors(check, finding) -> bool:

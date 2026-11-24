@@ -45,6 +45,7 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.37 | Database health also covers connections, size, version support, extension updates and slow statements | The statement ran on a real project |
 | 1.38 | Functions that take a user id without asking who is calling; policies open to every signed-in user; keys of six more services | Both checks ran on a real project, which changed them |
 | 1.39 | Fixes from the fifth outside review: Edge Functions config, shared helpers and baseline keys; policies with no condition | The changed statements ran on a real project |
+| 1.39.1 | Four edge cases from the review of 1.39.0 | The changed statements ran on a real project |
 
 ## In progress
 

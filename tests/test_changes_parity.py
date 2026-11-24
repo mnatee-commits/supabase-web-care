@@ -29,13 +29,13 @@ def test_option_like_or_odd_refs_are_refused(ref):
 def test_only_changed_files_are_scanned_and_sql_checks_wait_for_a_sql_change(tmp_path):
     repo = tmp_path / "site"
     (repo / "migrations").mkdir(parents=True)
-    old_key = "sb_secret_" + "o" * 24
+    old_key = "sb_" + "secret_" + "O1b2C3d4E5f6G7h8I9j0K1l2"
     (repo / "old.js").write_text(f"const k = '{old_key}';\n")
     (repo / "migrations" / "001.sql").write_text("create table public.t (id int);\n")
     git(repo, "init", "-q")
     git(repo, "add", ".")
     git(repo, "commit", "-qm", "first")
-    new_key = "sb_secret_" + "n" * 24
+    new_key = "sb_" + "secret_" + "N1b2C3d4E5f6G7h8I9j0K1l2"
     (repo / "new.js").write_text(f"const k = '{new_key}';\n")
     out = tmp_path / "out"
     code = main(["check", "--repo", str(repo), "--migrations", str(repo / "migrations"),
@@ -97,7 +97,7 @@ def test_a_deleted_migration_counts_as_a_sql_change_and_odd_names_survive(tmp_pa
     git(repo, "add", ".")
     git(repo, "commit", "-qm", "first")
     (repo / "migrations" / "002_rls.sql").unlink()
-    key = "sb_secret_" + "t" * 24
+    key = "sb_" + "secret_" + "T1b2C3d4E5f6G7h8I9j0K1l2"
     (repo / "บันทึก ไทย.js").write_text(f"const k = '{key}';\n")
     changed = changes.changed_files(repo, "HEAD")
     assert (repo / "migrations" / "002_rls.sql").resolve() in changed

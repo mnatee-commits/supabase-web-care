@@ -91,3 +91,16 @@ def test_visitors_come_first_only_when_a_finding_reaches_them():
     first = [f.rule for _, f in Report(checks=[check], source="s", target="t").first_findings(5)]
     assert first[0] == "matview_readable_by_api_roles"
     assert first[1:] == sorted(first[1:])  # the rest only by name: none of them reaches visitors
+
+
+def test_a_policy_open_to_public_counts_as_reaching_visitors():
+    from webcare.model import CheckResult, Finding
+    from webcare.report import Report
+
+    check = CheckResult(id="extra_live", title="t", status="FINDINGS", findings=[
+        Finding("live", "auth_role_deprecated", "medium", "public.a.p", "uses auth.role()"),
+        Finding("live", "policy_always_true", "medium", "public.t.wipe", "DELETE for public: USING (true), so every row"),
+        Finding("live", "policy_always_true", "medium", "public.t.staff", "DELETE for staff: USING (true), so every row"),
+    ])
+    first = Report(checks=[check], source="s", target="t").first_findings(3)
+    assert first[0][1].location == "public.t.wipe"

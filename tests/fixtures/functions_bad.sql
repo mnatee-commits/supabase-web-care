@@ -161,3 +161,21 @@ grant execute on function public.notes_by_member(bigint) to authenticated;
 create policy all_open on public.notes for delete to authenticated using (true);
 grant delete on public.notes to authenticated;
 create policy all_open on public.notes_rpc_only for all to authenticated using (true) with check (true);
+
+-- The guard call is commented out: its name is still in the body, but nothing runs.
+create function public.notes_unguarded(p_user_id uuid) returns setof public.notes
+language plpgsql security definer set search_path = ''
+as $$ begin
+  -- perform private.require_self(p_user_id);
+  return query select * from public.notes where user_id = p_user_id;
+end $$;
+revoke all on function public.notes_unguarded(uuid) from public, anon;
+grant execute on function public.notes_unguarded(uuid) to authenticated;
+
+-- FOR ALL with no condition on a table the API roles may only read: a read finding, not a write one.
+create table public.ref_codes (code text primary key);
+alter table public.ref_codes enable row level security;
+revoke all on public.ref_codes from anon, authenticated;
+grant select on public.ref_codes to anon, authenticated;
+create policy ref_all on public.ref_codes for all using (true) with check (true);
+

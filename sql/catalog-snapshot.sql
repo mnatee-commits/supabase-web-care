@@ -533,7 +533,9 @@ select jsonb_build_object(
                 '(''(?:[^'']|'''')*'')|--[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/', '\1', 'g'
               ) !~* 'auth\.(uid|jwt)\s*\(|request\.jwt'
           and not pg_catalog.texticregexeq(
-                p.prosrc,
+                regexp_replace(
+                  p.prosrc,
+                  '(''(?:[^'']|'''')*'')|--[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/', '\1', 'g'),
                 '\m(' || (
                   select coalesce(string_agg(distinct k.name, '|'), '$^')
                   from (
@@ -552,7 +554,9 @@ select jsonb_build_object(
                     join pg_catalog.pg_namespace gn on gn.oid = p.pronamespace
                     where gn.nspname !~ '^pg_' and gn.nspname not in ('information_schema', 'auth')
                       and pg_catalog.texticregexeq(
-                            p.prosrc,
+                            regexp_replace(
+                              p.prosrc,
+                              '(''(?:[^'']|'''')*'')|--[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/', '\1', 'g'),
                             '\m(' || (
                               select coalesce(string_agg(distinct regexp_replace(p.proname::text, '([^a-z0-9_])', '\\\1', 'gi'), '|'), '$^')
                               from pg_catalog.pg_proc p
@@ -641,7 +645,7 @@ select jsonb_build_object(
           and exists (
             select 1
             from unnest(array['anon', 'authenticated']) r(role_name),
-                 unnest(case p.cmd when 'ALL' then array['SELECT', 'INSERT', 'UPDATE', 'DELETE']
+                 unnest(case p.cmd when 'ALL' then array['INSERT', 'UPDATE', 'DELETE']
                                    else array[p.cmd] end) x(privilege)
             where (r.role_name = any(p.roles) or 'public' = any(p.roles))
               and case when x.privilege = 'DELETE'
@@ -674,18 +678,24 @@ select jsonb_build_object(
         where p.schemaname = any(array['public']::text[])
           and p.permissive = 'PERMISSIVE'
           and c.using_true
-          and p.cmd = 'SELECT'
+          and p.cmd in ('SELECT', 'ALL')
           and pg_catalog.to_regrole('anon') is not null
           and pg_catalog.to_regrole('authenticated') is not null
           and exists (
             select 1
             from unnest(array['anon', 'authenticated']) r(role_name),
-                 unnest(case p.cmd when 'ALL' then array['SELECT', 'INSERT', 'UPDATE', 'DELETE']
-                                   else array[p.cmd] end) x(privilege)
+                 unnest(array['SELECT']) x(privilege)
             where (r.role_name = any(p.roles) or 'public' = any(p.roles))
               and case when x.privilege = 'DELETE'
                        then pg_catalog.has_table_privilege(r.role_name, t.oid, x.privilege)
                        else pg_catalog.has_any_column_privilege(r.role_name, t.oid, x.privilege) end)
+          and (p.cmd = 'SELECT' or not exists (
+            select 1
+            from unnest(array['anon', 'authenticated']) r(role_name)
+            where (r.role_name = any(p.roles) or 'public' = any(p.roles))
+              and (pg_catalog.has_any_column_privilege(r.role_name, t.oid, 'INSERT')
+                or pg_catalog.has_any_column_privilege(r.role_name, t.oid, 'UPDATE')
+                or pg_catalog.has_table_privilege(r.role_name, t.oid, 'DELETE'))))
         order by 1
         limit 500
       ) q

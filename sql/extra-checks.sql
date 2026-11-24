@@ -553,7 +553,9 @@ where n.nspname = any(%(schemas)s)
   -- (a guard such as require_owner() that relies on a current_user_id() helper). The names
   -- of those functions are gathered once into one pattern, so each body is matched once.
   and not pg_catalog.texticregexeq(
-        p.prosrc,
+        regexp_replace(
+          p.prosrc,
+          '(''(?:[^'']|'''')*'')|--[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/', '\1', 'g'),
         '\m(' || (
           select coalesce(string_agg(distinct k.name, '|'), '$^')
           from (
@@ -572,7 +574,9 @@ where n.nspname = any(%(schemas)s)
             join pg_catalog.pg_namespace gn on gn.oid = p.pronamespace
             where gn.nspname !~ '^pg_' and gn.nspname not in ('information_schema', 'auth')
               and pg_catalog.texticregexeq(
-                    p.prosrc,
+                    regexp_replace(
+                      p.prosrc,
+                      '(''(?:[^'']|'''')*'')|--[^\n]*|/\*(?:[^*]|\*+[^*/])*\*+/', '\1', 'g'),
                     '\m(' || (
                       select coalesce(string_agg(distinct regexp_replace(p.proname::text, '([^a-z0-9_])', '\\\1', 'gi'), '|'), '$^')
                       from pg_catalog.pg_proc p
@@ -641,7 +645,8 @@ order by 1;
 -- title: Policy lets its roles write every row, with no condition
 -- why: USING (true) or WITH CHECK (true) on INSERT, UPDATE, DELETE or ALL lets every caller
 --      the policy applies to add, change or remove any row: RLS is on, but this policy
---      filters nothing. Almost never right. pgrls reports the same over a direct connection
+--      filters nothing. Almost never right. A FOR ALL policy counts only where a write
+--      privilege is held; with SELECT alone it is left to policy_read_always_true. pgrls reports the same over a direct connection
 --      (SEC008, SEC028); this check also runs from a snapshot and through the API.
 select
   quote_ident(p.schemaname) || '.' || quote_ident(p.tablename) || '.' || quote_ident(p.policyname)
@@ -672,7 +677,7 @@ where p.schemaname = any(%(schemas)s)
   and exists (
     select 1
     from unnest(array['anon', 'authenticated']) r(role_name),
-         unnest(case p.cmd when 'ALL' then array['SELECT', 'INSERT', 'UPDATE', 'DELETE']
+         unnest(case p.cmd when 'ALL' then array['INSERT', 'UPDATE', 'DELETE']
                            else array[p.cmd] end) x(privilege)
     where (r.role_name = any(p.roles) or 'public' = any(p.roles))
       and case when x.privilege = 'DELETE'
@@ -708,7 +713,7 @@ cross join lateral (
 where p.schemaname = any(%(schemas)s)
   and p.permissive = 'PERMISSIVE'
   and c.using_true
-  and p.cmd = 'SELECT'
+  and p.cmd in ('SELECT', 'ALL')
   and pg_catalog.to_regrole('anon') is not null
   and pg_catalog.to_regrole('authenticated') is not null
   -- only where an API role the policy applies to holds the privilege it is about (a column
@@ -716,10 +721,18 @@ where p.schemaname = any(%(schemas)s)
   and exists (
     select 1
     from unnest(array['anon', 'authenticated']) r(role_name),
-         unnest(case p.cmd when 'ALL' then array['SELECT', 'INSERT', 'UPDATE', 'DELETE']
-                           else array[p.cmd] end) x(privilege)
+         unnest(array['SELECT']) x(privilege)
     where (r.role_name = any(p.roles) or 'public' = any(p.roles))
       and case when x.privilege = 'DELETE'
                then pg_catalog.has_table_privilege(r.role_name, t.oid, x.privilege)
                else pg_catalog.has_any_column_privilege(r.role_name, t.oid, x.privilege) end)
+  -- a FOR ALL policy is reported here only when no role it applies to can write;
+  -- where one can, policy_always_true reports it
+  and (p.cmd = 'SELECT' or not exists (
+    select 1
+    from unnest(array['anon', 'authenticated']) r(role_name)
+    where (r.role_name = any(p.roles) or 'public' = any(p.roles))
+      and (pg_catalog.has_any_column_privilege(r.role_name, t.oid, 'INSERT')
+        or pg_catalog.has_any_column_privilege(r.role_name, t.oid, 'UPDATE')
+        or pg_catalog.has_table_privilege(r.role_name, t.oid, 'DELETE'))))
 order by 1;
