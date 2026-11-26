@@ -497,6 +497,9 @@ def cmd_inventory(args: argparse.Namespace) -> int:
         return EXIT_REFUSED
     for name, part in data["parts"].items():
         state = f"{len(part['rows'])} entries" if "rows" in part else f"not read: {part['not_read']}"
+        if name == "column_grants" and "rows" in part:
+            grants = sum(len(privileges) for roles in part["rows"].values() for privileges in roles.values())
+            state = f"{len(part['rows'])} columns, {grants} grants"
         print(f"  {name:<14} {state}")
     print(f"inventory of {target.describe()} through {route}: {out}")
     return 0

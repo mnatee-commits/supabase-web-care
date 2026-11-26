@@ -50,6 +50,8 @@ END_OF_LIFE_WARNING_DAYS = 180
 # Read through query_to_xml because the view's schema differs between installations
 # (`extensions` on Supabase, `public` elsewhere) and a name that does not exist would fail
 # the whole statement. Counts and timings only: the `query` column is never selected.
+# The schema's USAGE is asked first: naming a relation in a schema the role may not use
+# raises an error, which would fail every other reading taken by the same statement.
 # The thresholds are applied here, before the limit: taking the top few by total time first
 # would let fast statements called millions of times push the slow ones off the list.
 
@@ -188,14 +190,15 @@ def build_sql(t: Thresholds = DEFAULT) -> str:
        where e.installed_version is not null and e.installed_version <> e.default_version
        order by 1 limit {MAX_ROWS}) q), '[]'::jsonb),
   'statements', (select case
-      when r.rel is not null and pg_catalog.has_table_privilege(r.rel, 'SELECT')
+      when r.rel is not null and r.reachable and pg_catalog.has_table_privilege(r.rel, 'SELECT')
       then coalesce(((xpath('/row/j/text()', pg_catalog.query_to_xml(
              pg_catalog.format('{_statements_inner(t)}', r.rel), false, true, '')))[1])::text::jsonb, '[]'::jsonb)
       end
-      from (select (select pg_catalog.format('%I.pg_stat_statements', n.nspname)
-                      from pg_catalog.pg_extension e
-                      join pg_catalog.pg_namespace n on n.oid = e.extnamespace
-                     where e.extname = 'pg_stat_statements') as rel) r)
+      from (select pg_catalog.format('%I.pg_stat_statements', n.nspname) as rel,
+                   pg_catalog.has_schema_privilege(n.oid, 'USAGE') as reachable
+              from pg_catalog.pg_extension e
+              join pg_catalog.pg_namespace n on n.oid = e.extnamespace
+             where e.extname = 'pg_stat_statements') r)
 ) as db_health"""
 
 

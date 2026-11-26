@@ -3,6 +3,20 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.39.2
+Three faults found the first time someone else ran the live checks over a direct connection,
+against a local Supabase database (Postgres 17.12), as the audit role.
+- `sql/auditor-role-drop.sql` failed for an administrator that is not a superuser, which is
+  what `postgres` is on Supabase ("permission denied to drop objects"). The script now takes
+  the role's privileges before dropping what it holds; from Postgres 16 the role that
+  created another is a member of it without inheriting them.
+- `db_health` ended in ERROR when pg_stat_statements sits in a schema the audit role may not
+  use (`extensions` on Supabase): asking for the privilege on a relation named in such a
+  schema raises an error, which took every other reading with it. USAGE on the schema is
+  asked first; the report then says the statistics were not readable.
+- `inventory` printed the column-grant part as "N entries", counting columns, where a count
+  taken with `aclexplode` gives grants. It now prints both: "61 columns, 74 grants".
+
 ## 1.39.1
 Four edge cases the reviewer found in 1.39.0 (Gemini, 24 November 2026).
 - `policy_always_true` no longer reports a write hole for a `FOR ALL` policy on a table

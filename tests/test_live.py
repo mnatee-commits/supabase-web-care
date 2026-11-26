@@ -4,6 +4,8 @@ from webcare import live
 from webcare.model import Refusal
 from webcare.targets import get_target
 
+ROOT = __import__("pathlib").Path(__file__).resolve().parent.parent
+
 psycopg = pytest.importorskip("psycopg")
 
 
@@ -289,3 +291,29 @@ def test_comments_and_strings_naming_current_user_do_not_count(pg):
     assert "default_table_privileges" not in grouped
     assert not any(rule.startswith(("extension_", "realtime_", "view_runs")) for rule in grouped)
     assert not any("could not run" in note for note in result.notes)
+
+
+def test_an_administrator_that_is_not_a_superuser_can_remove_the_audit_role(pg):
+    """`postgres` on Supabase is not a superuser; the drop script must still work for it."""
+    import secrets as _secrets
+
+    import psycopg
+    from psycopg.conninfo import make_conninfo
+
+    drop_sql = (ROOT / "sql" / "auditor-role-drop.sql").read_text()
+    role_sql = (ROOT / "sql" / "auditor-role.sql").read_text().replace("webcare_auditor", "webcare_auditor_tmp")
+    drop_sql = drop_sql.replace("webcare_auditor", "webcare_auditor_tmp")
+    manager, password = "webcare_t_manager_" + _secrets.token_hex(3), _secrets.token_urlsafe(18)
+    with psycopg.connect(pg.admin_bad, autocommit=True) as admin:
+        admin.execute(
+            psycopg.sql.SQL("create role {} login createrole nosuperuser password {}").format(
+                psycopg.sql.Identifier(manager), psycopg.sql.Literal(password)))
+        try:
+            with psycopg.connect(make_conninfo(pg.admin_bad, user=manager, password=password), autocommit=True) as plain:
+                plain.execute(role_sql)
+                plain.execute(drop_sql)
+                left = plain.execute("select count(*) from pg_roles where rolname = 'webcare_auditor_tmp'").fetchone()[0]
+            assert left == 0
+        finally:
+            admin.execute("drop role if exists webcare_auditor_tmp")
+            admin.execute(psycopg.sql.SQL("drop role if exists {}").format(psycopg.sql.Identifier(manager)))

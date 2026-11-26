@@ -118,3 +118,24 @@ def test_against_the_test_database(pg):
     assert any("not visible" in note for note in result.notes)  # the audit role lacks pg_read_all_stats
     assert any(note.startswith("database size:") for note in result.notes)
     assert any(note.startswith("connections in use:") for note in result.notes)
+
+
+def test_statement_statistics_in_a_schema_the_role_may_not_use_do_not_fail_the_check(pg):
+    """On Supabase pg_stat_statements lives in `extensions`, which the audit role may not use."""
+    import psycopg
+
+    with psycopg.connect(pg.admin_bad, autocommit=True) as admin:
+        try:
+            admin.execute("create schema if not exists webcare_closed_ext")
+            admin.execute("revoke all on schema webcare_closed_ext from public")
+            admin.execute("create extension if not exists pg_stat_statements with schema webcare_closed_ext")
+        except psycopg.Error:
+            pytest.skip("pg_stat_statements is not available on this server")
+        try:
+            with psycopg.connect(pg.auditor_bad) as connection:
+                result = db_health.run_on_connection(connection, "test")
+            assert result.status != "ERROR", result.reason
+            assert any("pg_stat_statements" in note for note in result.notes)
+        finally:
+            admin.execute("drop extension if exists pg_stat_statements")
+            admin.execute("drop schema if exists webcare_closed_ext")
