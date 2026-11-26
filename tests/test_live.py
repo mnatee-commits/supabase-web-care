@@ -317,3 +317,58 @@ def test_an_administrator_that_is_not_a_superuser_can_remove_the_audit_role(pg):
         finally:
             admin.execute("drop role if exists webcare_auditor_tmp")
             admin.execute(psycopg.sql.SQL("drop role if exists {}").format(psycopg.sql.Identifier(manager)))
+
+
+def _exposure(rows, expected=()):
+    from webcare.model import CheckResult
+
+    result = CheckResult(id="functions_live", title="t", evidence="e")
+    return live.judge_function_exposure(result, rows, True, ["public", "private"], expected)
+
+
+def test_execute_without_schema_usage_is_not_reported_as_callable():
+    """anon holding EXECUTE in a schema it may not use cannot call the function."""
+    rows = [
+        {"schema_name": "private", "function_name": "helper", "arg_types": "",
+         "public_may": True, "anon_may": True, "anon_reaches_schema": False},
+        {"schema_name": "public", "function_name": "open_one", "arg_types": "",
+         "public_may": False, "anon_may": True, "anon_reaches_schema": True},
+    ]
+    result = _exposure(rows, expected=["public.banner()"])
+    found = {f.location: (f.rule, f.severity) for f in result.findings}
+    assert found["private.helper()"] == ("secdef_behind_schema_usage", "low")
+    assert found["public.open_one()"] == ("secdef_anon_executable", "high")
+    assert any("anon may execute 1;" in note for note in result.notes)
+    assert any("1 more hold EXECUTE" in note for note in result.notes)
+
+
+def test_an_expected_function_in_a_closed_schema_is_reported_as_missing():
+    rows = [{"schema_name": "private", "function_name": "banner", "arg_types": "",
+             "public_may": False, "anon_may": True, "anon_reaches_schema": False}]
+    result = _exposure(rows, expected=["private.banner()"])
+    assert {f.rule for f in result.findings} == {"secdef_behind_schema_usage", "expected_anon_function_missing"}
+
+
+def test_a_snapshot_from_before_the_schema_flag_is_judged_as_before():
+    rows = [{"schema_name": "private", "function_name": "helper", "arg_types": "",
+             "public_may": True, "anon_may": True}]
+    result = _exposure(rows)
+    assert [f.rule for f in result.findings] == ["secdef_anon_executable"]
+
+
+def test_live_functions_in_a_schema_anon_may_not_use(pg):
+    import psycopg
+    from psycopg.rows import dict_row
+
+    with psycopg.connect(pg.admin_bad, autocommit=True) as admin:
+        admin.execute("create schema if not exists webcare_closed")
+        admin.execute("revoke all on schema webcare_closed from public")
+        admin.execute(
+            "create or replace function webcare_closed.helper() returns int language sql "
+            "security definer set search_path = '' as 'select 1'")
+        try:
+            with psycopg.connect(pg.admin_bad, row_factory=dict_row) as connection:
+                rows = connection.execute(live._DEFINER_FUNCTIONS_SQL, {"schemas": ["webcare_closed"]}).fetchall()
+            assert [(r["anon_may"], r["anon_reaches_schema"]) for r in rows] == [(True, False)]
+        finally:
+            admin.execute("drop schema webcare_closed cascade")

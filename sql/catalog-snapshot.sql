@@ -27,7 +27,10 @@ select jsonb_build_object(
                  where a.grantee = 0 and a.privilege_type = 'EXECUTE')) as public_may,
              case when exists (select 1 from pg_catalog.pg_roles where rolname = 'anon')
                   then pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
-                  else false end as anon_may
+                  else false end as anon_may,
+             case when exists (select 1 from pg_catalog.pg_roles where rolname = 'anon')
+                  then pg_catalog.has_schema_privilege('anon', n.oid, 'USAGE')
+                  else true end as anon_reaches_schema
         from pg_catalog.pg_proc p
         join pg_catalog.pg_namespace n on n.oid = p.pronamespace
        where n.nspname = any(array['public']::text[])

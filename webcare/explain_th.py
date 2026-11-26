@@ -40,6 +40,7 @@ RULES: dict[str, str] = {
     "secdef_public_execute": "ฟังก์ชัน SECURITY DEFINER ที่ทุก role เรียกได้ (ผ่าน PUBLIC) ทำงานด้วยสิทธิ์เจ้าของ ข้าม RLS ได้ ถอนสิทธิ์จาก PUBLIC และ anon",
     "secdef_anon_granted": "ฟังก์ชัน SECURITY DEFINER ที่ให้ผู้ไม่ล็อกอินเรียกได้ตรง ๆ ถ้าไม่ได้ตั้งใจให้ถอนสิทธิ์จาก anon",
     "secdef_anon_not_revoked": "ถอนสิทธิ์จาก PUBLIC แล้วแต่ anon ยังได้สิทธิ์จากค่าตั้งต้นของ Supabase ต้องถอนจาก anon ด้วย",
+    "secdef_behind_schema_usage": "ผู้ไม่ล็อกอินมีสิทธิ์เรียกฟังก์ชัน SECURITY DEFINER นี้ แต่เข้า schema ของมันไม่ได้ จึงยังเรียกไม่ถึง สิ่งเดียวที่กันอยู่คือสิทธิ์เข้า schema ถ้ามีการเปิดสิทธิ์นั้น ฟังก์ชันกลุ่มนี้จะเปิดพร้อมกันทั้งหมด ควรถอน EXECUTE จาก PUBLIC และ anon ด้วย",
     "secdef_anon_executable": "ผู้ไม่ล็อกอินเรียกฟังก์ชัน SECURITY DEFINER นี้ได้ ถ้าไม่ได้ตั้งใจให้ถอนสิทธิ์ ถ้าตั้งใจให้อ่านโค้ดแล้วใส่ใน expected_anon_functions",
     "secdef_trusts_current_user": "ด่านตรวจในฟังก์ชันเช็ก current_user ซึ่งในฟังก์ชัน SECURITY DEFINER คือเจ้าของฟังก์ชันเสมอ ด่านจึงปล่อยทุกคนผ่าน ใช้ auth.uid() หรือ session_user แทน",
     "secdef_no_search_path": "ฟังก์ชัน SECURITY DEFINER ไม่ได้ตรึง search_path อาจถูกหลอกให้เรียกฟังก์ชันปลอม ใส่ SET search_path = ''",

@@ -81,7 +81,10 @@ select n.nspname::text as schema_name,
            where a.grantee = 0 and a.privilege_type = 'EXECUTE')) as public_may,
        case when exists (select 1 from pg_catalog.pg_roles where rolname = 'anon')
             then pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')
-            else false end as anon_may
+            else false end as anon_may,
+       case when exists (select 1 from pg_catalog.pg_roles where rolname = 'anon')
+            then pg_catalog.has_schema_privilege('anon', n.oid, 'USAGE')
+            else true end as anon_reaches_schema
   from pg_catalog.pg_proc p
   join pg_catalog.pg_namespace n on n.oid = p.pronamespace
  where n.nspname = any(%(schemas)s)
@@ -379,10 +382,31 @@ def judge_function_exposure(
     expected = {entry.replace(" ", "").lower(): entry for entry in expected_anon_functions}
     matched: set[str] = set()
     callable_by_anon = 0
+    behind_schema = 0
     for row in rows:
         location = f"{row['schema_name']}.{row['function_name']}({row['arg_types']})"
         keys = _function_keys(row["schema_name"], row["function_name"], row["arg_types"])
         allowed = keys & expected.keys()
+        # A snapshot taken before 1.40.0 does not say; it is then judged as before.
+        reaches = bool(row.get("anon_reaches_schema", True))
+        if row["anon_may"] and not reaches:
+            behind_schema += 1
+            result.findings.append(
+                Finding(
+                    source="functions_live",
+                    rule="secdef_behind_schema_usage",
+                    severity="low",
+                    location=location,
+                    message=(
+                        "anon holds EXECUTE on this SECURITY DEFINER function but not USAGE on "
+                        f"schema {row['schema_name']}, so a visitor cannot call it today. The "
+                        "schema's USAGE is the only thing in the way: one GRANT USAGE to anon or "
+                        "PUBLIC would open every such function at once. Revoke EXECUTE from "
+                        "PUBLIC and anon as well."
+                    ),
+                )
+            )
+            continue
         if row["anon_may"]:
             callable_by_anon += 1
             matched |= allowed
@@ -439,6 +463,11 @@ def judge_function_exposure(
         f"{len(rows)} SECURITY DEFINER functions in {', '.join(schemas)}; anon may execute "
         f"{callable_by_anon}; {len(matched)} allowlist entries matched"
     )
+    if behind_schema:
+        result.notes.append(
+            f"{behind_schema} more hold EXECUTE for anon in a schema anon may not use; "
+            "they are reported at low severity, not as callable"
+        )
     if not anon_exists:
         result.notes.append("this database has no role named anon, so only PUBLIC grants were judged")
     elif callable_by_anon and not expected:

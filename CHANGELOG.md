@@ -3,6 +3,20 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.40.0
+A false alarm found on the second run against a local Supabase database, where the target
+covered a schema that visitors may not use.
+- SECURITY DEFINER functions: `secdef_anon_executable` (high once a target lists what is
+  public on purpose) was raised for every function `anon` holds EXECUTE on, without asking
+  whether `anon` may use the function's schema. A function in a schema closed to `anon`
+  cannot be called by a visitor. Such a function is now reported as
+  `secdef_behind_schema_usage` at low severity, saying that the schema's USAGE is the only
+  thing in the way, and it no longer counts as callable or matches an entry of
+  `expected_anon_functions`. The statement of `snapshot-sql` carries the same fact; a
+  snapshot taken with an older statement is judged as before.
+- Checked on the author's staging project (read-only): 19 callable, all in `public`, and 51
+  in a closed schema, which the older statement would have reported as 70 callable.
+
 ## 1.39.2
 Three faults found the first time someone else ran the live checks over a direct connection,
 against a local Supabase database (Postgres 17.12), as the audit role.
