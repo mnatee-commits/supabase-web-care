@@ -379,6 +379,8 @@ def cmd_preflight(args: argparse.Namespace) -> int:
         print(f"warning:    this role {' and '.join(problems)} (accepted by {live.OVERRIDE_FLAG})")
     else:
         print("ok:         this role cannot write to application tables")
+    for exposure in facts.exposures():
+        print(f"warning:    this role {exposure}")
     return 0
 
 
@@ -870,6 +872,8 @@ def _live_checks(
                     f"connected with a privileged role ({' and '.join(facts.problems())}); "
                     f"accepted by {live.OVERRIDE_FLAG}"
                 )
+            for exposure in facts.exposures():
+                rls_live.notes.append(f"the connecting role {exposure}")
             if facts.relations_readable:
                 rls_live.notes.append(
                     f"the connecting role can read {facts.relations_readable} of "

@@ -41,7 +41,8 @@ AREAS: dict[str, Area] = {
     ),
     "extensions": Area(
         frozenset({"extra_live"}),
-        frozenset({"extension_net_callable", "extension_vault_reachable", "extension_cron_reachable"}),
+        frozenset({"extension_net_callable", "extension_vault_reachable", "extension_cron_reachable",
+                   "extension_in_public"}),
     ),
     "realtime": Area(
         frozenset({"extra_live"}),

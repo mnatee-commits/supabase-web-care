@@ -3,6 +3,33 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.41.0
+Three additions from Supabase's Knowledge Base (supabase.com/kb, opened 23 Nov 2026) and the
+first run of the live checks against a local copy of a Supabase project.
+- The audit role and pg_net. On Supabase, every role that can log in reaches what `PUBLIC`
+  holds, and with pg_net enabled that includes `net.http_request_queue`, where queued
+  requests keep their headers, API keys included ("Custom role inherits privileges that were
+  not explicitly granted"). The platform owns schema `net`, so the grant cannot be revoked.
+  The checks never read the queue, but the role could. `preflight` now prints a warning when
+  it can, and `check` adds the same note to `rls_live`. The connection is not refused. On
+  the author's staging project both queue tables and schema `net` are open to `PUBLIC`.
+- `table_writes`: TRUNCATE held by `authenticated` was a note; it is now a finding,
+  `authenticated_truncate` (low), like `anon_truncate`. REFERENCES, TRIGGER and, on
+  Postgres 17, MAINTAIN are asked for as well and listed per role
+  (`anon_unused_table_privileges`, `authenticated_unused_table_privileges`, info). The Data
+  API uses none of the four, and turning off "Automatically expose new tables" leaves all of
+  them in the default privileges ("Can't change the default privileges of supabase_admin in
+  the public schema"). The changed statement ran read-only on the author's staging project
+  (Postgres 17): `authenticated` held TRUNCATE and MAINTAIN on 15 tables, `anon` none.
+- New catalog check `extension_in_public` (low, in `--focus extensions`): an extension
+  installed in a checked schema. Supabase creates most extensions as `supabase_admin`, whose
+  default privileges give the API roles everything on what it creates, and a project can
+  neither revoke those grants nor turn RLS on for the extension's tables. The finding says
+  whether the extension can move with `alter extension ... set schema extensions`.
+- Tests: 321 pass on Postgres 16, with an extension in public and a stand-in pg_net queue
+  added to the vulnerable fixture. MAINTAIN exists on Postgres 17 only and was not tested
+  locally.
+
 ## 1.40.0
 A false alarm found on the second run against a local Supabase database, where the target
 covered a schema that visitors may not use.

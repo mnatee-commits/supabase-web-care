@@ -311,6 +311,31 @@ select jsonb_build_object(
         limit 500
       ) q
     ), '[]'::jsonb),
+    'extension_in_public', coalesce((
+      select jsonb_agg(to_jsonb(q)) from (
+        select
+          quote_ident(n.nspname) || ' (extension ' || quote_ident(e.extname) || ')' as location,
+          'extension ' || e.extname || ' ' || e.extversion || ' lives in ' || n.nspname
+            || ' and is owned by ' || pg_catalog.pg_get_userbyid(e.extowner) || '; it holds '
+            || (select count(*) from pg_catalog.pg_depend d
+                 where d.refclassid = 'pg_catalog.pg_extension'::regclass and d.refobjid = e.oid
+                   and d.deptype = 'e' and d.classid in ('pg_catalog.pg_class'::regclass, 'pg_catalog.pg_proc'::regclass))
+            || ' tables, views, sequences and functions there. '
+            || case when e.extrelocatable
+                    then 'It can move: alter extension ' || quote_ident(e.extname)
+                         || ' set schema extensions (first check functions whose search_path leaves out extensions)'
+                    else 'It cannot move with alter extension; moving it means dropping it with what depends on it, '
+                         || 'or asking Supabase support'
+               end
+            as detail
+        from pg_catalog.pg_extension e
+        join pg_catalog.pg_namespace n on n.oid = e.extnamespace
+        where n.nspname = any(array['public']::text[])
+          and n.nspname not in ('extensions', 'pg_catalog')
+        order by 1
+        limit 500
+      ) q
+    ), '[]'::jsonb),
     'extension_vault_reachable', coalesce((
       select jsonb_agg(to_jsonb(q)) from (
         select

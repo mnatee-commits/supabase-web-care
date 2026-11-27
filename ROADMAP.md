@@ -48,6 +48,7 @@ it has run against a real Supabase project, not only against the test suite.
 | 1.39.1 | Four edge cases from the review of 1.39.0 | The changed statements ran on a real project |
 | 1.39.2 | Audit-role removal for a non-superuser administrator; `db_health` with statement statistics in a closed schema; column-grant count in `inventory` | Found on a local Supabase database (Postgres 17.12); fixed and tested on Postgres 16, not yet re-run on Supabase |
 | 1.40.0 | SECURITY DEFINER functions in a schema visitors may not use are no longer reported as callable | The changed statement ran on a real project; tested on Postgres 16 |
+| 1.41.0 | The audit role warns when it can read pg_net's queue; TRUNCATE and the other unused privileges of `authenticated` are reported; extensions in public are reported | Tested on Postgres 16 with stand-ins; MAINTAIN needs Postgres 17 |
 
 ## In progress
 

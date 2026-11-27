@@ -6,9 +6,10 @@ from webcare.targets import Target, load_targets
 
 
 def row(table, role="authenticated", writes=("insert", "update", "delete"), rls=True, kind="r",
-        columns_only=(), truncate=False, invoker=False):
+        columns_only=(), truncate=False, invoker=False, unused=()):
     return {"table_name": table, "role": role, "writes": list(writes), "rls": rls, "kind": kind,
-            "columns_only": list(columns_only), "may_truncate": truncate, "security_invoker": invoker}
+            "columns_only": list(columns_only), "may_truncate": truncate, "security_invoker": invoker,
+            "unused": list(unused)}
 
 
 def judged(*rows, declared=None):
@@ -72,9 +73,26 @@ def test_columns_only_and_truncate_are_named():
     result = judged(row("public.p", writes=("update",), columns_only=("update",), truncate=True),
                     declared={"authenticated": ["public.q"]})
     assert "update (some columns)" in result.findings[0].message
-    assert any("TRUNCATE ignores RLS" in note for note in result.notes)
+    truncate = [f for f in result.findings if f.rule == "authenticated_truncate"]
+    assert len(truncate) == 1 and "TRUNCATE ignores RLS" in truncate[0].message
     anon = judged(row("public.p", role="anon", writes=(), truncate=True))
     assert found(anon) == {("anon_truncate", "low", "role anon")}
+
+
+def test_privileges_the_data_api_never_uses_are_listed_per_role():
+    result = judged(
+        row("public.a", writes=(), unused=("references", "trigger", "maintain")),
+        row("public.b", writes=(), unused=("trigger",)),
+        row("public.c", role="anon", writes=(), unused=("references",)),
+    )
+    assert found(result) == {
+        ("authenticated_unused_table_privileges", "info", "role authenticated"),
+        ("anon_unused_table_privileges", "info", "role anon"),
+    }
+    signed_in = next(f for f in result.findings if f.location == "role authenticated")
+    assert "TRIGGER on 2 (public.a, public.b)" in signed_in.message
+    assert "MAINTAIN on 1 (public.a)" in signed_in.message
+    assert result.status != "FINDINGS" or all(f.severity == "info" for f in result.findings)
 
 
 def test_a_declared_table_with_rls_off_is_still_reported():

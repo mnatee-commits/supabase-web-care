@@ -3,7 +3,9 @@
 One read-only statement. For each table, view and foreign table in the
 target's schemas it asks Postgres whether `anon` and `authenticated` hold
 INSERT, UPDATE or DELETE, counting privileges given to PUBLIC and to roles
-they belong to, and privileges on single columns. It also reads whether RLS is
+they belong to, and privileges on single columns. It also asks about TRUNCATE,
+REFERENCES, TRIGGER and (Postgres 17) MAINTAIN, which the Data API never uses
+but which Supabase's default privileges grant to both roles, and whether RLS is
 on. It reads no row of any table and no policy expression.
 
 A privilege is the first gate; RLS policies are the second. A write privilege
@@ -45,7 +47,11 @@ def build_sql(schemas) -> str:
              array_remove(array[
                case when w.ins and not w.ins_all then 'insert' end,
                case when w.upd and not w.upd_all then 'update' end], null) as columns_only,
-             w.trunc as may_truncate
+             w.trunc as may_truncate,
+             array_remove(array[
+               case when w.refs then 'references' end,
+               case when w.trig then 'trigger' end,
+               case when w.maint then 'maintain' end], null) as unused
         from (
           select n.nspname || '.' || c.relname as table_name, c.relkind::text as kind,
                  c.relrowsecurity as rls, r.rolname::text as role,
@@ -56,7 +62,12 @@ def build_sql(schemas) -> str:
                  pg_catalog.has_any_column_privilege(r.oid, c.oid, 'UPDATE') as upd,
                  pg_catalog.has_table_privilege(r.oid, c.oid, 'UPDATE') as upd_all,
                  pg_catalog.has_table_privilege(r.oid, c.oid, 'DELETE') as del,
-                 pg_catalog.has_table_privilege(r.oid, c.oid, 'TRUNCATE') as trunc
+                 pg_catalog.has_table_privilege(r.oid, c.oid, 'TRUNCATE') as trunc,
+                 pg_catalog.has_table_privilege(r.oid, c.oid, 'REFERENCES') as refs,
+                 pg_catalog.has_table_privilege(r.oid, c.oid, 'TRIGGER') as trig,
+                 case when current_setting('server_version_num')::int >= 170000
+                      then pg_catalog.has_table_privilege(r.oid, c.oid, 'MAINTAIN')
+                      else false end as maint
             from pg_catalog.pg_class c
             join pg_catalog.pg_namespace n on n.oid = c.relnamespace
             cross join pg_catalog.pg_roles r
@@ -64,7 +75,7 @@ def build_sql(schemas) -> str:
              and c.relkind in ('r', 'p', 'v', 'f')
              and r.rolname in ({roles})
         ) w
-       where w.ins or w.upd or w.del or w.trunc
+       where w.ins or w.upd or w.del or w.trunc or w.refs or w.trig or w.maint
        order by w.rls, 1, 4
        limit {MAX_ROWS}
     ) q
@@ -117,6 +128,7 @@ def judge(result: CheckResult, report: dict, target: Target) -> CheckResult:
 
     undeclared: dict[str, list[str]] = {role: [] for role in TABLE_WRITE_ROLES}
     truncate: dict[str, list[str]] = {role: [] for role in TABLE_WRITE_ROLES}
+    unused: dict[str, dict[str, list[str]]] = {role: {} for role in TABLE_WRITE_ROLES}
     seen: dict[str, set[str]] = {role: set() for role in TABLE_WRITE_ROLES}
     for row in rows:
         role, table = str(row.get("role")), str(row.get("table_name")).lower()
@@ -124,6 +136,8 @@ def judge(result: CheckResult, report: dict, target: Target) -> CheckResult:
             continue
         if row.get("may_truncate"):
             truncate[role].append(table)
+        for privilege in row.get("unused") or []:
+            unused[role].setdefault(str(privilege).upper(), []).append(table)
         writes = {str(w) for w in row.get("writes") or []}
         if not writes:
             continue
@@ -166,10 +180,18 @@ def judge(result: CheckResult, report: dict, target: Target) -> CheckResult:
         text = (f"{role} holds TRUNCATE on {len(tables)} tables ({_list(tables)}). TRUNCATE ignores "
                 "RLS; the Data API never issues it, but a function running as the caller could. "
                 "Revoke it with the write privileges you do not need.")
-        if role == "anon":
-            add("anon_truncate", "low", "role anon", text)
-        else:
-            result.notes.append(text)
+        add(f"{role}_truncate", "low", f"role {role}", text)
+    for role, by_privilege in unused.items():
+        if not by_privilege:
+            continue
+        parts = "; ".join(f"{privilege} on {len(tables)} ({_list(tables)})"
+                          for privilege, tables in sorted(by_privilege.items()))
+        add(
+            f"{role}_unused_table_privileges", "info", f"role {role}",
+            f"{role} holds privileges the Data API never uses: {parts}. They come from the "
+            "schema's default privileges and need a SQL session running as the role; revoke "
+            "them together with TRUNCATE.",
+        )
     for role, tables in declared.items():
         stale = sorted(set(tables) - seen[role])
         if stale:

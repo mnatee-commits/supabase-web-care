@@ -20,6 +20,7 @@ def test_extra_checks_file_holds_only_selects():
         "default_function_privileges_platform",
         "default_table_privileges",
         "extension_net_callable",
+        "extension_in_public",
         "extension_vault_reachable",
         "extension_cron_reachable",
         "realtime_table_without_rls",
@@ -63,6 +64,9 @@ def test_audit_role_is_accepted_and_reads_no_rows(pg):
         assert not facts.privileged and facts.tx_read_only
         assert facts.relations_total > 0
         assert facts.relations_readable == 0 and facts.relations_writable == 0
+        # Through PUBLIC, the audit role can read pg_net's queue; it is reported, not refused.
+        assert facts.pg_net_readable == ("net._http_response", "net.http_request_queue")
+        assert len(facts.exposures()) == 1 and "API keys" in facts.exposures()[0]
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             connection.execute("select count(*) from public.orders")
     finally:
@@ -123,6 +127,7 @@ def test_extra_checks_on_both_schemas(pg):
         ("policy_read_always_true", "public.orders.orders_read_all"),
         ("storage_upsert_incomplete", "storage.objects (role authenticated)"),
         ("view_runs_as_owner", "public.orders_view"),  # a view anon reads, without security_invoker
+        ("extension_in_public", "public (extension pg_trgm)"),
     }
     good = run(pg.auditor_good)
     assert good.status == "PASS" and not good.findings

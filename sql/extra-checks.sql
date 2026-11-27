@@ -296,6 +296,37 @@ where n.nspname = 'net'
 group by r.rolname, n.nspowner
 order by 1;
 
+-- check: extension_in_public
+-- severity: low
+-- title: Extension installed in a checked schema, owned by the platform's role
+-- why: Supabase creates most extensions as supabase_admin, whose default
+--      privileges give anon and authenticated every privilege on what it
+--      creates. An extension in public therefore puts tables and functions
+--      there that the Data API roles may use, that a project cannot revoke,
+--      and on which it cannot turn RLS on. Keep extensions in schema extensions.
+--      See supabase.com/kb, "Can't change the default privileges of
+--      supabase_admin in the public schema".
+select
+  quote_ident(n.nspname) || ' (extension ' || quote_ident(e.extname) || ')' as location,
+  'extension ' || e.extname || ' ' || e.extversion || ' lives in ' || n.nspname
+    || ' and is owned by ' || pg_catalog.pg_get_userbyid(e.extowner) || '; it holds '
+    || (select count(*) from pg_catalog.pg_depend d
+         where d.refclassid = 'pg_catalog.pg_extension'::regclass and d.refobjid = e.oid
+           and d.deptype = 'e' and d.classid in ('pg_catalog.pg_class'::regclass, 'pg_catalog.pg_proc'::regclass))
+    || ' tables, views, sequences and functions there. '
+    || case when e.extrelocatable
+            then 'It can move: alter extension ' || quote_ident(e.extname)
+                 || ' set schema extensions (first check functions whose search_path leaves out extensions)'
+            else 'It cannot move with alter extension; moving it means dropping it with what depends on it, '
+                 || 'or asking Supabase support'
+       end
+    as detail
+from pg_catalog.pg_extension e
+join pg_catalog.pg_namespace n on n.oid = e.extnamespace
+where n.nspname = any(%(schemas)s)
+  and n.nspname not in ('extensions', 'pg_catalog')
+order by 1;
+
 -- check: extension_vault_reachable
 -- severity: high
 -- title: API roles may read Vault or call its functions

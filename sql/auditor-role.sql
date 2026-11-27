@@ -9,6 +9,13 @@
 -- function left open to PUBLIC is open to this role too, exactly as it is to
 -- `anon`. The live checks report such objects; they never call them.
 --
+-- On Supabase with pg_net enabled, PUBLIC may read net.http_request_queue,
+-- where pg_net keeps the headers of queued requests, API keys included. The
+-- platform owns schema net, so this cannot be revoked. The checks never read
+-- it, and `preflight` warns when the role can; keep the login short-lived (step
+-- 2) or turn pg_net off if nothing uses it. See supabase.com/kb, "Custom role
+-- inherits privileges that were not explicitly granted".
+--
 -- Step 1. Run this file once per database as an administrator
 --         (psql, or the Supabase SQL editor). Safe to run again.
 

@@ -89,3 +89,14 @@ insert into public.orders (tenant_id, user_id, total) values
   ('00000000-0000-4000-8000-00000000000b', '00000000-0000-4000-8000-000000000002', 20.00);
 insert into public.notes (user_id, body) values
   ('00000000-0000-4000-8000-000000000001', 'synthetic note');
+
+-- An extension created in public, as `create extension` without a schema does.
+create extension if not exists pg_trgm with schema public;
+
+-- pg_net's queue as Supabase ships it: schema net and its tables open to PUBLIC, so every
+-- role that can log in, the audit role included, may read queued request headers.
+create schema net;
+grant usage on schema net to public;
+create table net.http_request_queue (id bigint primary key, url text, headers jsonb);
+create table net._http_response (id bigint primary key, status_code int);
+grant all on table net.http_request_queue, net._http_response to public;

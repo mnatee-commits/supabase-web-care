@@ -40,7 +40,14 @@ select current_user as role_name,
        (select coalesce(array_agg(g.rolname::text order by g.rolname), '{}')
           from pg_catalog.pg_auth_members m
           join pg_catalog.pg_roles g on g.oid = m.roleid
-         where m.member = r.oid) as member_of
+         where m.member = r.oid) as member_of,
+       (select coalesce(array_agg(n.nspname || '.' || c.relname order by c.relname), '{}')
+          from pg_catalog.pg_class c
+          join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+         where n.nspname = 'net'
+           and c.relname in ('http_request_queue', '_http_response')
+           and pg_catalog.has_schema_privilege(n.oid, 'USAGE')
+           and pg_catalog.has_table_privilege(c.oid, 'SELECT')) as pg_net_readable
   from pg_catalog.pg_roles r
  where r.rolname = current_user
 """
@@ -108,6 +115,7 @@ class RoleFacts:
     relations_total: int
     relations_readable: int
     relations_writable: int
+    pg_net_readable: tuple[str, ...] = ()
 
     @property
     def privileged(self) -> bool:
@@ -122,6 +130,18 @@ class RoleFacts:
         if self.relations_writable:
             found.append(f"can write to {self.relations_writable} application tables")
         return found
+
+    def exposures(self) -> list[str]:
+        """What the role can read that a read-only audit role should not, without being refused."""
+        if not self.pg_net_readable:
+            return []
+        return [
+            f"can read {', '.join(self.pg_net_readable)} through PUBLIC: pg_net keeps the headers "
+            "of queued requests there, API keys included. The checks never read these tables, "
+            "but anyone holding this role's password could. The platform owns schema net, so the "
+            "grant cannot be revoked; keep the login short-lived, or turn pg_net off if nothing "
+            "uses it"
+        ]
 
     def summary(self) -> str:
         return (
@@ -178,6 +198,7 @@ def role_facts(connection, schemas: Iterable[str]) -> RoleFacts:
         relations_total=reach["total"],
         relations_readable=reach["readable"],
         relations_writable=reach["writable"],
+        pg_net_readable=tuple(row.get("pg_net_readable") or ()),
     )
 
 
