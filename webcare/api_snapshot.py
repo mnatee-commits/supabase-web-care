@@ -304,11 +304,11 @@ def log_summary(
     target: Target, owner_approved: bool, sql: str, start: str, end: str,
     token_env: str = DEFAULT_TOKEN_ENV, api_base: str = "",
 ):
-    """GET the log query endpoint with this package's one fixed counting query."""
+    """GET the log query endpoint with one of this package's fixed counting queries."""
     from . import logs
 
-    if sql != logs.SQL:
-        raise Refusal("only the toolkit's own log summary query may be sent")
+    if sql not in (logs.SQL, logs.TREND_SQL):
+        raise Refusal("only the toolkit's own log counting queries may be sent")
     target.ensure_allowed(owner_approved)
     if not target.project_ref:
         raise Refusal(

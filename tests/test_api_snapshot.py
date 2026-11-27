@@ -390,9 +390,11 @@ def test_log_summary_is_read_only_when_asked_and_carries_only_the_fixed_query(ap
     api.seen.clear()
     _code, checks, text = run_cli(tmp_path, capsys, *arguments, "--with-logs")
     gets = [path for method, path, _, _ in api.seen if method == "GET"]
-    assert len(gets) == 1 and urlsplit(gets[0]).path == f"/v1/projects/{REF}/analytics/endpoints/logs"
-    sent = parse_qs(urlsplit(gets[0]).query)
-    assert sent["sql"] == [logs.SQL] and set(sent) == {"sql", "iso_timestamp_start", "iso_timestamp_end"}
+    assert len(gets) == 3 and all(urlsplit(g).path == f"/v1/projects/{REF}/analytics/endpoints/logs" for g in gets)
+    sent = [parse_qs(urlsplit(g).query) for g in gets]
+    assert [q["sql"] for q in sent] == [[logs.SQL], [logs.TREND_SQL], [logs.TREND_SQL]]
+    assert all(set(q) == {"sql", "iso_timestamp_start", "iso_timestamp_end"} for q in sent)
+    assert sent[2]["iso_timestamp_end"] == sent[1]["iso_timestamp_start"]  # the 24 hours before
     found = [(f["rule"], f["location"]) for f in checks["health_logs"]["findings"]]
     assert found == [("log_anon_rpc_unexpected", "rpc/admin_tool")] and TOKEN not in text
 

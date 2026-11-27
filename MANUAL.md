@@ -212,6 +212,10 @@ unset WEBCARE_ACCESS_TOKEN
   names. Supabase documents the `analytics_logs_read` permission for this.
   Supabase keeps logs for a limited number of days depending on plan, and this
   check sees 24 hours per run.
+  It also compares the last 24 hours with the 24 hours before, for the API gateway and Auth
+  separately: server errors and refusals are reported when they reach 20, 1% of responses and
+  twice the earlier rate (Supabase's detection guide). Two more GETs of one fixed counting query;
+  a window with fewer than 100 responses, or none at all, is reported as unable to assess.
 - **Sign-in settings (`auth_config`)** runs only with `--with-auth-config`.
   One more GET reads the Supabase Auth configuration. It reports open sign-up
   that was not declared (`expected_open_signup`), anonymous sign-ins,

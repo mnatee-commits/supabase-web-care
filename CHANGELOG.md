@@ -3,6 +3,28 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.43.0
+Three checks from Supabase's detection guide (docs: observability/detecting), for a project
+that is checked from time to time rather than watched all day.
+- `health_logs` (`--with-logs`) compares the last 24 hours with the 24 hours before, for the
+  API gateway and Auth separately: server errors (5xx, `log_error_rate_rising`) and refusals
+  (401 or 403, `log_denied_rate_rising`), both medium. The thresholds are the guide's: at
+  least 20, at least 1% of responses, and at least twice the earlier rate; both windows need
+  100 responses. Otherwise the report says it is unable to assess, never that it is clear,
+  and names the free plan's short log retention when the earlier window is empty. This adds
+  two GETs of the same fixed counting query; the log endpoint still accepts only the
+  toolkit's own queries.
+- `db_health` names the sessions that hold locks other sessions wait for
+  (`blocking_session`, medium; only with `pg_read_all_stats`, as the other session checks),
+  and notes the share of table reads served from Postgres's cache, with no threshold: the
+  guide asks for a workload's own baseline.
+- Checked read-only on the author's staging project: the new statements ran on Postgres 17
+  and the log query on its log store (Auth events without a status are counted apart, as
+  the guide expects).
+- Not added: daily history and a forecast of when a limit is reached. Both need a run every
+  day and somewhere outside the project to keep the numbers.
+- Tests: 333 pass on Postgres 16.
+
 ## 1.42.0
 Two changes from comparing the reports of two runs against a local copy of a Supabase project
 with what its staging database actually allows (read-only queries).

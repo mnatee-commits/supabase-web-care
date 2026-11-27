@@ -139,3 +139,32 @@ def test_statement_statistics_in_a_schema_the_role_may_not_use_do_not_fail_the_c
         finally:
             admin.execute("drop extension if exists pg_stat_statements")
             admin.execute("drop schema if exists webcare_closed_ext")
+
+
+def test_sessions_holding_locks_others_wait_for_are_reported():
+    result = judged(blockers=[{"role_name": "authenticator", "state": "idle in transaction",
+                               "sessions": 1, "longest_seconds": 900}])
+    assert found(result) == {("blocking_session", "medium", "role authenticator")}
+    assert "15 min" in result.findings[0].message or "900" in result.findings[0].message
+
+
+def test_blockers_are_not_judged_when_other_sessions_are_not_visible():
+    result = judged(sees_other_sessions=False,
+                    blockers=[{"role_name": "x", "state": "active", "sessions": 1, "longest_seconds": 9}])
+    assert not result.findings
+
+
+def test_cache_hits_are_a_note_without_a_threshold():
+    result = judged(cache={"hits": 990, "reads": 10})
+    assert not result.findings
+    assert any("table cache hits since statistics were last reset: 99.0%" in n for n in result.notes)
+    empty = judged(cache={"hits": 0, "reads": 0})
+    assert any("no table access recorded" in n for n in empty.notes)
+
+
+def test_the_live_statement_reads_blockers_and_cache(pg):
+    import psycopg
+
+    with psycopg.connect(pg.auditor_bad) as connection:
+        result = db_health.run_on_connection(connection, "test database")
+    assert any(note.startswith("table cache hits") for note in result.notes)

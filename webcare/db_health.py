@@ -5,7 +5,9 @@ One read-only statement, on a direct connection or through `--via-api`:
 - indexes left invalid by a CREATE INDEX CONCURRENTLY that failed
 - tables with many dead rows (bloat), and tables or the database near
   transaction-ID wraparound
-- sessions left idle inside a transaction, and sessions waiting on a lock
+- sessions left idle inside a transaction, sessions waiting on a lock, and the
+  sessions holding the locks others wait for
+- the share of table reads served from Postgres's cache (a note, no threshold)
 - sequences close to the largest value they can give
 - connections in use against the limit, the size of the database and its largest
   tables, a Postgres version near the end of its support, extensions with a newer
@@ -137,6 +139,17 @@ def build_sql(t: Thresholds = DEFAULT) -> str:
          and a.state in ('idle in transaction', 'idle in transaction (aborted)')
          and coalesce(a.state_change, a.xact_start) <= now() - interval '{t.idle_seconds} seconds'
        group by 1, 2 order by 1, 2) q), '[]'::jsonb),
+  'blockers', coalesce((select jsonb_agg(to_jsonb(q)) from (
+      select coalesce(b.usename::text, 'unknown') as role_name, b.state, count(*) as sessions,
+             max(extract(epoch from now() - coalesce(b.xact_start, b.state_change)))::bigint as longest_seconds
+        from pg_catalog.pg_stat_activity b
+       where b.datname = current_database() and b.pid <> pg_catalog.pg_backend_pid()
+         and exists (select 1 from pg_catalog.pg_stat_activity w
+                      where w.pid <> b.pid and b.pid = any(pg_catalog.pg_blocking_pids(w.pid)))
+       group by 1, 2 order by 1, 2) q), '[]'::jsonb),
+  'cache', (select jsonb_build_object('hits', coalesce(sum(s.heap_blks_hit), 0),
+                                      'reads', coalesce(sum(s.heap_blks_read), 0))
+              from pg_catalog.pg_statio_user_tables s),
   'lock_waits', coalesce((select jsonb_agg(to_jsonb(q)) from (
       select coalesce(a.usename::text, 'unknown') as role_name, count(*) as sessions,
              max(extract(epoch from now() - coalesce(a.query_start, a.state_change)))::bigint as longest_seconds
@@ -254,6 +267,11 @@ def judge(result: CheckResult, report: dict, t: Thresholds = DEFAULT, today: Opt
                 f"{row.get('sessions')} session(s) {row.get('state')} for up to {_minutes(longest)}; they "
                 "hold locks and stop vacuum from cleaning up. Set idle_in_transaction_session_timeout "
                 "for this role.")
+        for row in _rows(report, "blockers"):
+            add("blocking_session", "medium", f"role {row.get('role_name')}",
+                f"{row.get('sessions')} session(s) ({row.get('state')}) hold locks other sessions are "
+                f"waiting for, in transactions open for up to {_minutes(row.get('longest_seconds'))}. Find "
+                "out what each transaction is doing before ending it; age alone is no reason to cancel")
         for row in _rows(report, "lock_waits"):
             add("lock_wait", "medium", f"role {row.get('role_name')}",
                 f"{row.get('sessions')} session(s) waiting on a lock, in statements running for up to "
@@ -288,6 +306,17 @@ def judge(result: CheckResult, report: dict, t: Thresholds = DEFAULT, today: Opt
                     "that open connections and never close them.")
             else:
                 result.notes.append(f"connections in use: {in_use} of {usable} ({used:.0%})")
+    cache = report.get("cache") if isinstance(report.get("cache"), dict) else None
+    if cache is not None:
+        hits, reads = int(cache.get("hits") or 0), int(cache.get("reads") or 0)
+        if hits + reads:
+            result.notes.append(
+                f"table cache hits since statistics were last reset: {hits / (hits + reads):.1%} "
+                f"({hits} hits, {reads} reads from outside Postgres's cache). Judge against this "
+                "workload's usual value, not a fixed number; a read here may still be served by the "
+                "operating system's cache")
+        else:
+            result.notes.append("table cache hits: no table access recorded since statistics were last reset")
     if report.get("database_bytes") is not None:
         largest = ", ".join(f"{row.get('table_name')} {_size(row.get('bytes'))}" for row in _rows(report, "largest_tables"))
         result.notes.append(

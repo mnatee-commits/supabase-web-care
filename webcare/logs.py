@@ -1,7 +1,10 @@
 """Site health: a 24-hour summary of the API gateway log, counts only.
 
-One GET of the project's log query endpoint through the Management API, and
-only when the operator asks with `--with-logs`. The access token needs one
+Three GETs of the project's log query endpoint through the Management API, and
+only when the operator asks with `--with-logs`: the grouped summary below, and
+one count per source (API gateway and Auth) for the last 24 hours and for the
+24 hours before, so that a rise in server errors or refusals is compared with
+the day before, as Supabase's detection checks do. The access token needs one
 more permission for it, `analytics_logs_read`.
 
 The query is fixed and asks for counts grouped by service, table or function
@@ -46,6 +49,80 @@ SQL = (
     "group by service, target, method, status, key_kind, signed_in "
     f"order by requests desc limit {MAX_GROUPS}"
 )
+
+
+# Supabase's detection checks (docs: observability/detecting): one count per source, the API
+# gateway and Auth judged separately because their events are different observations.
+TREND_SQL = (
+    "select source, count() as events, "
+    "countIf(status between 100 and 599) as responses, "
+    "countIf(status between 500 and 599) as server_errors, "
+    "countIf(status in (401, 403)) as access_failures, "
+    "countIf(status is null or status < 100 or status > 599) as unknown_status "
+    "from (select source, toInt32OrNull(if(source = 'edge_logs', "
+    "log_attributes['response.status_code'], log_attributes['status'])) as status "
+    "from logs where source in ('edge_logs', 'auth_logs')) "
+    "group by source order by source limit 2"
+)
+TREND_MIN_RESPONSES = 100
+TREND_MIN_COUNT = 20
+TREND_MIN_RATE = 0.01
+TREND_RISE = 2.0
+TREND_SOURCES = {"edge_logs": "API gateway", "auth_logs": "Auth"}
+
+
+def previous_window(start: str) -> tuple[str, str]:
+    begin = datetime.strptime(start, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    return (begin - WINDOW).strftime("%Y-%m-%dT%H:%M:%SZ"), start
+
+
+def _by_source(answer) -> Optional[dict[str, dict]]:
+    if not isinstance(answer, dict) or not isinstance(answer.get("result"), list) or answer.get("error"):
+        return None
+    return {str(row.get("source")): row for row in answer["result"] if isinstance(row, dict)}
+
+
+def judge_trend(result: CheckResult, current, previous) -> None:
+    """Compare server errors and refusals per source with the 24 hours before."""
+    now_rows, before_rows = _by_source(current), _by_source(previous)
+    if now_rows is None or before_rows is None:
+        result.notes.append("comparison with the previous 24 hours: unable to assess (the log endpoint "
+                            "did not return a result in the documented shape)")
+        return
+    for source, label in TREND_SOURCES.items():
+        now_row, before_row = now_rows.get(source), before_rows.get(source)
+        if now_row is None or before_row is None:
+            result.notes.append(
+                f"{label}: unable to assess the change since the previous 24 hours, because one window "
+                "has no events from this source. On the free plan logs are kept for a short time, so "
+                "the earlier window may already be gone; a missing source is not a zero error rate")
+            continue
+        now_total, before_total = _number(now_row.get("responses")), _number(before_row.get("responses"))
+        unknown = _number(now_row.get("unknown_status"))
+        if unknown:
+            result.notes.append(f"{label}: {unknown} events in the last 24 hours had no valid status")
+        if now_total < TREND_MIN_RESPONSES or before_total < TREND_MIN_RESPONSES:
+            result.notes.append(
+                f"{label}: unable to assess the change since the previous 24 hours ({now_total} and "
+                f"{before_total} responses; both windows need at least {TREND_MIN_RESPONSES})")
+            continue
+        for field, rule, what in (("server_errors", "log_error_rate_rising", "server errors (5xx)"),
+                                  ("access_failures", "log_denied_rate_rising", "refusals (401 or 403)")):
+            count, before = _number(now_row.get(field)), _number(before_row.get(field))
+            rate, before_rate = count / now_total, before / before_total
+            rising = rate >= TREND_RISE * before_rate if before_rate else True
+            if count >= TREND_MIN_COUNT and rate >= TREND_MIN_RATE and rising:
+                compared = (f"against {before_rate:.1%} in the 24 hours before" if before_rate
+                            else "with none in the 24 hours before")
+                result.findings.append(Finding(
+                    SOURCE, rule, "medium", f"{label} log",
+                    f"{count} {what} out of {now_total} responses ({rate:.1%}) in the last 24 hours, "
+                    f"{compared}. A rise is a reason to look, not proof of an attack: group them by "
+                    "status and path, not by user or address"))
+            else:
+                result.notes.append(
+                    f"{label}: {what} {count} of {now_total} ({rate:.1%}), the 24 hours before "
+                    f"{before} of {before_total} ({before_rate:.1%}); no rise above the thresholds")
 
 
 def window(now: Optional[datetime] = None) -> tuple[str, str]:
@@ -139,4 +216,9 @@ def run(target: Target, fetch, evidence: str, now: Optional[datetime] = None) ->
     """`fetch(sql, start, end)` returns the decoded answer of the log endpoint."""
     start, end = window(now)
     result = CheckResult(id="health_logs", title=TITLE, evidence=evidence)
-    return judge(result, fetch(SQL, start, end), target, start, end)
+    judge(result, fetch(SQL, start, end), target, start, end)
+    if result.status != ERROR:
+        before_start, before_end = previous_window(start)
+        judge_trend(result, fetch(TREND_SQL, start, end), fetch(TREND_SQL, before_start, before_end))
+        result.finish()
+    return result
