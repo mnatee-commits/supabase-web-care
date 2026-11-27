@@ -32,6 +32,52 @@ where p.schemaname = any(%(schemas)s)
   )
 order by 1;
 
+-- check: update_all_columns
+-- severity: low
+-- title: API role may change columns its UPDATE policy does not pin
+-- why: RLS decides which rows a role may change, not which columns. With a
+--      table-wide UPDATE privilege, a caller who passes the policy can set any
+--      column. A column the policy names (user_id = auth.uid()) is pinned by its
+--      check; the others, such as roles, counters and statuses, are not. Grant
+--      UPDATE on the columns the site edits, or guard the others with a trigger.
+--      Read what each policy admits first: one that only lets administrators in
+--      may be fine as it is.
+with candidates as (
+  select n.nspname, c.relname, c.oid, r.rolname, p.policyname,
+         coalesce(p.with_check, p.qual, '') as pinned_by
+  from pg_catalog.pg_class c
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  cross join pg_catalog.pg_roles r
+  join pg_catalog.pg_policies p
+    on p.schemaname = n.nspname and p.tablename = c.relname
+  where n.nspname = any(%(schemas)s)
+    and c.relkind in ('r', 'p')
+    and r.rolname in ('anon', 'authenticated')
+    and pg_catalog.has_table_privilege(r.oid, c.oid, 'UPDATE')
+    and p.cmd in ('UPDATE', 'ALL')
+    and p.permissive = 'PERMISSIVE'
+    and (r.rolname = any(p.roles) or 'public' = any(p.roles))
+),
+loose as (
+  select k.nspname, k.relname, k.rolname, k.policyname, a.attname
+  from candidates k
+  join pg_catalog.pg_attribute a on a.attrelid = k.oid
+  where a.attnum > 0
+    and not a.attisdropped
+    and a.attname ~* '(role|admin|owner|actor|user_id|tenant|facility|status|balance|credit|plan|permission|_count$|verified|approved|^is_)'
+    and strpos(k.pinned_by, a.attname) = 0
+)
+select
+  quote_ident(l.nspname) || '.' || quote_ident(l.relname) || ' (role ' || l.rolname || ')' as location,
+  l.rolname || ' may set ' || string_agg(distinct quote_ident(l.attname), ', ')
+    || ' on rows that policy ' || string_agg(distinct quote_ident(l.policyname), ', ')
+    || ' lets it change; the policy does not pin these columns and RLS limits rows, not columns. '
+    || 'Grant UPDATE on the columns the site edits, or guard the rest with a trigger'
+    as detail
+from loose l
+group by l.nspname, l.relname, l.rolname
+order by 1;
+
 -- check: auth_role_deprecated
 -- severity: low
 -- title: Policy calls the deprecated auth.role()

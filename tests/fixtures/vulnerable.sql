@@ -100,3 +100,21 @@ grant usage on schema net to public;
 create table net.http_request_queue (id bigint primary key, url text, headers jsonb);
 create table net._http_response (id bigint primary key, status_code int);
 grant all on table net.http_request_queue, net._http_response to public;
+
+-- A batch its creator may edit: the policy pins actor_id, but the table-wide UPDATE lets
+-- the creator rewrite the counters the server is meant to keep.
+create table public.batches (
+  id bigint generated always as identity primary key,
+  actor_id uuid not null,
+  published_count integer not null default 0,
+  notes text
+);
+alter table public.batches enable row level security;
+create policy batches_update_own on public.batches
+  for update to authenticated
+  using ((select auth.uid()) = actor_id)
+  with check ((select auth.uid()) = actor_id);
+grant select, update on public.batches to authenticated;
+create policy batches_select_own on public.batches
+  for select to authenticated
+  using ((select auth.uid()) = actor_id);

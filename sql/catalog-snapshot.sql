@@ -77,6 +77,46 @@ select jsonb_build_object(
         limit 500
       ) q
     ), '[]'::jsonb),
+    'update_all_columns', coalesce((
+      select jsonb_agg(to_jsonb(q)) from (
+        with candidates as (
+          select n.nspname, c.relname, c.oid, r.rolname, p.policyname,
+                 coalesce(p.with_check, p.qual, '') as pinned_by
+          from pg_catalog.pg_class c
+          join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+          cross join pg_catalog.pg_roles r
+          join pg_catalog.pg_policies p
+            on p.schemaname = n.nspname and p.tablename = c.relname
+          where n.nspname = any(array['public']::text[])
+            and c.relkind in ('r', 'p')
+            and r.rolname in ('anon', 'authenticated')
+            and pg_catalog.has_table_privilege(r.oid, c.oid, 'UPDATE')
+            and p.cmd in ('UPDATE', 'ALL')
+            and p.permissive = 'PERMISSIVE'
+            and (r.rolname = any(p.roles) or 'public' = any(p.roles))
+        ),
+        loose as (
+          select k.nspname, k.relname, k.rolname, k.policyname, a.attname
+          from candidates k
+          join pg_catalog.pg_attribute a on a.attrelid = k.oid
+          where a.attnum > 0
+            and not a.attisdropped
+            and a.attname ~* '(role|admin|owner|actor|user_id|tenant|facility|status|balance|credit|plan|permission|_count$|verified|approved|^is_)'
+            and strpos(k.pinned_by, a.attname) = 0
+        )
+        select
+          quote_ident(l.nspname) || '.' || quote_ident(l.relname) || ' (role ' || l.rolname || ')' as location,
+          l.rolname || ' may set ' || string_agg(distinct quote_ident(l.attname), ', ')
+            || ' on rows that policy ' || string_agg(distinct quote_ident(l.policyname), ', ')
+            || ' lets it change; the policy does not pin these columns and RLS limits rows, not columns. '
+            || 'Grant UPDATE on the columns the site edits, or guard the rest with a trigger'
+            as detail
+        from loose l
+        group by l.nspname, l.relname, l.rolname
+        order by 1
+        limit 500
+      ) q
+    ), '[]'::jsonb),
     'auth_role_deprecated', coalesce((
       select jsonb_agg(to_jsonb(q)) from (
         select

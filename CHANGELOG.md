@@ -3,6 +3,29 @@
 Versions before 1.10 were developed inside another repository; this file
 summarises them.
 
+## 1.42.0
+Two changes from comparing the reports of two runs against a local copy of a Supabase project
+with what its staging database actually allows (read-only queries).
+- pgrls findings about anonymous access are checked against the live catalog. SEC038
+  ("anonymous read leak") is judged from the policy expression alone, so a `USING (true)`
+  policy written `TO service_role` was reported at high severity as leaking every row to
+  visitors; on the project checked, 9 of 10 such findings were of this kind. Where the
+  policy names no role `anon` holds, the finding is now info. SEC042 ("anonymously
+  executable SECURITY DEFINER function") ignored whether `anon` may use the function's
+  schema; 51 of 70 were in a schema closed to `anon`. Those are now low, as
+  `secdef_behind_schema_usage` already reported them. Each finding keeps pgrls's rule and
+  text, with the reason in front, and `rls_live` notes how many were lowered. Over a direct
+  connection only; SQL files are linted as before.
+- New catalog check `update_all_columns` (low, in `--focus tables`). RLS limits which rows a
+  role may change, not which columns. The check reports tables where `anon` or
+  `authenticated` holds a table-wide UPDATE privilege and a permissive UPDATE policy, and
+  names the columns that look sensitive (roles, owners, actors, tenants, statuses,
+  counters) which the policy's check does not mention. It would have found a table where an
+  importer could rewrite the counters of its own batches, which a community checklist
+  found and this toolkit did not. On the staging project it reports 3 tables, each behind a
+  policy that admits administrators only; the finding asks the reader to check that.
+- Tests: 324 pass on Postgres 16.
+
 ## 1.41.0
 Three additions from Supabase's Knowledge Base (supabase.com/kb, opened 23 Nov 2026) and the
 first run of the live checks against a local copy of a Supabase project.

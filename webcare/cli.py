@@ -872,6 +872,8 @@ def _live_checks(
                     f"connected with a privileged role ({' and '.join(facts.problems())}); "
                     f"accepted by {live.OVERRIDE_FLAG}"
                 )
+            if rls_live.findings:
+                live.reclassify_pgrls(rls_live, *live.pgrls_context(connection, target.schemas))
             for exposure in facts.exposures():
                 rls_live.notes.append(f"the connecting role {exposure}")
             if facts.relations_readable:

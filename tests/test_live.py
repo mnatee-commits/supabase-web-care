@@ -13,6 +13,7 @@ def test_extra_checks_file_holds_only_selects():
     checks = live.load_extra_checks()
     assert [check.id for check in checks] == [
         "update_without_select",
+        "update_all_columns",
         "auth_role_deprecated",
         "storage_upsert_incomplete",
         "secdef_trusts_current_user",
@@ -128,6 +129,7 @@ def test_extra_checks_on_both_schemas(pg):
         ("storage_upsert_incomplete", "storage.objects (role authenticated)"),
         ("view_runs_as_owner", "public.orders_view"),  # a view anon reads, without security_invoker
         ("extension_in_public", "public (extension pg_trgm)"),
+        ("update_all_columns", "public.batches (role authenticated)"),  # counter the policy does not pin
     }
     good = run(pg.auditor_good)
     assert good.status == "PASS" and not good.findings
@@ -377,3 +379,58 @@ def test_live_functions_in_a_schema_anon_may_not_use(pg):
             assert [(r["anon_may"], r["anon_reaches_schema"]) for r in rows] == [(True, False)]
         finally:
             admin.execute("drop schema webcare_closed cascade")
+
+
+def _finding(rule, location, severity="high"):
+    from webcare.model import Finding
+    return Finding(source="pgrls", rule=rule, severity=severity, location=location, message="pgrls text")
+
+
+def test_pgrls_anon_claims_are_lowered_only_where_the_catalog_contradicts_them():
+    from webcare.model import CheckResult
+    result = CheckResult(id="rls_live", title="t")
+    result.findings.extend([
+        _finding("SEC038", "public.flags.flags_service_all"),      # TO service_role
+        _finding("SEC038", "public.pages.pages_read"),             # TO anon, authenticated
+        _finding("SEC038", "public.gone.gone_policy"),             # not in the catalog
+        _finding("SEC042", "private.admin_list_users"),            # anon may not use private
+        _finding("SEC042", "public.support_contact"),              # anon may use public
+        _finding("SEC002", "public.flags"),                        # other rules untouched
+    ])
+    result.finish()
+    policies = {"public.flags.flags_service_all": ("service_role",),
+                "public.pages.pages_read": ("anon", "authenticated")}
+    functions = {"private.admin_list_users": False, "public.support_contact": True}
+    live.reclassify_pgrls(result, policies, functions)
+    got = {(f.rule, f.location): f for f in result.findings}
+    assert got[("SEC038", "public.flags.flags_service_all")].severity == "info"
+    assert "applies only to service_role" in got[("SEC038", "public.flags.flags_service_all")].message
+    assert got[("SEC038", "public.flags.flags_service_all")].message.endswith("pgrls text")
+    assert got[("SEC038", "public.pages.pages_read")].severity == "high"
+    assert got[("SEC038", "public.gone.gone_policy")].severity == "high"
+    assert got[("SEC042", "private.admin_list_users")].severity == "low"
+    assert got[("SEC042", "public.support_contact")].severity == "high"
+    assert got[("SEC002", "public.flags")].severity == "high"
+    assert len(result.findings) == 6
+    assert any("lowered 1 pgrls finding(s) about anonymous reads" in n and "1 about anonymous function calls" in n
+               for n in result.notes)
+
+
+def test_nothing_to_lower_leaves_the_result_as_it_was():
+    from webcare.model import CheckResult
+    result = CheckResult(id="rls_live", title="t")
+    result.findings.append(_finding("SEC038", "public.pages.pages_read"))
+    result.finish()
+    live.reclassify_pgrls(result, {"public.pages.pages_read": ("public",)}, {})
+    assert result.findings[0].severity == "high" and not result.notes
+
+
+def test_pgrls_context_reads_policy_roles_and_schema_reach(pg):
+    connection = live.connect(pg.auditor_bad)
+    try:
+        policies, functions = live.pgrls_context(connection, ["public"])
+    finally:
+        connection.close()
+    assert policies and all(isinstance(roles, tuple) for roles in policies.values())
+    assert "public.orders.orders_read_all" in policies
+    assert all(isinstance(reach, bool) for reach in functions.values())

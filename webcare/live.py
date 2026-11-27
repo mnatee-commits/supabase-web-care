@@ -9,7 +9,7 @@ tables is refused.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable
 
@@ -502,3 +502,87 @@ def judge_function_exposure(
         "the Data API exposes the schema, or what the function body does."
     )
     return result.finish()
+
+
+_PGRLS_CONTEXT_SQL = """
+select 'policy' as kind,
+       p.schemaname || '.' || p.tablename || '.' || p.policyname as name,
+       p.roles::text[] as roles,
+       null::boolean as anon_reaches_schema
+  from pg_catalog.pg_policies p
+ where p.schemaname = any(%(schemas)s)
+union all
+select 'function', n.nspname || '.' || p.proname, null,
+       case when exists (select 1 from pg_catalog.pg_roles where rolname = 'anon')
+            then pg_catalog.has_schema_privilege('anon', n.oid, 'USAGE')
+            else true end
+  from pg_catalog.pg_proc p
+  join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = any(%(schemas)s)
+   and p.prosecdef
+"""
+
+# pgrls rules that claim an anonymous visitor reaches something; web-care checks the claim
+# against the live catalog before repeating it at full severity.
+PGRLS_ANON_POLICY_RULES = frozenset({"SEC038"})
+PGRLS_ANON_FUNCTION_RULES = frozenset({"SEC042"})
+
+
+def pgrls_context(connection, schemas) -> tuple[dict[str, tuple[str, ...]], dict[str, bool]]:
+    """Policy roles by schema.table.policy, and whether anon may use each definer function's schema."""
+    rows = connection.execute(_PGRLS_CONTEXT_SQL, {"schemas": list(schemas)}).fetchall()
+    connection.rollback()
+    policies: dict[str, tuple[str, ...]] = {}
+    functions: dict[str, bool] = {}
+    for row in rows:
+        if row["kind"] == "policy":
+            policies[row["name"]] = tuple(row["roles"] or ())
+        else:
+            # Overloads share a name; the name is reachable if any overload's schema is.
+            functions[row["name"]] = functions.get(row["name"], False) or bool(row["anon_reaches_schema"])
+    return policies, functions
+
+
+def reclassify_pgrls(result, policies: dict, functions: dict) -> None:
+    """Lower pgrls findings about anonymous access that the live catalog contradicts.
+
+    pgrls judges SEC038 from the policy expression alone, so a USING (true) policy
+    written for service_role is reported as leaking every row to anonymous visitors.
+    It judges SEC042 from EXECUTE alone, without asking whether anon may use the
+    function's schema. Both stay in the report under their own rule, with the reason
+    for the lower severity in front of pgrls's text.
+    """
+    lowered_policies = lowered_functions = 0
+    changed = []
+    for finding in result.findings:
+        if finding.rule in PGRLS_ANON_POLICY_RULES and finding.location in policies:
+            roles = policies[finding.location]
+            if "anon" not in roles and "public" not in roles:
+                lowered_policies += 1
+                finding = replace(
+                    finding, severity="info",
+                    message=(f"[web-care: lowered to info] This policy applies only to "
+                             f"{', '.join(roles) or 'no role'}; anon is not among them, so an "
+                             "anonymous session is not covered by it. pgrls does not read the "
+                             "policy's TO clause for this rule. " + finding.message),
+                )
+        elif finding.rule in PGRLS_ANON_FUNCTION_RULES and finding.location in functions:
+            if not functions[finding.location]:
+                lowered_functions += 1
+                finding = replace(
+                    finding, severity="low",
+                    message=("[web-care: lowered to low] anon may not use this function's "
+                             "schema, so a visitor cannot call it today; the schema's USAGE is "
+                             "the only thing in the way (see secdef_behind_schema_usage). "
+                             + finding.message),
+                )
+        changed.append(finding)
+    result.findings[:] = changed
+    if lowered_policies or lowered_functions:
+        result.notes.append(
+            f"web-care lowered {lowered_policies} pgrls finding(s) about anonymous reads to info, "
+            "because the policy names no role anon holds, and "
+            f"{lowered_functions} about anonymous function calls to low, because anon may not use "
+            "the function's schema; each keeps pgrls's rule and text"
+        )
+        result.finish()

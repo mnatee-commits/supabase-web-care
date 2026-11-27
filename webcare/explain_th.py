@@ -61,6 +61,7 @@ RULES: dict[str, str] = {
     "anon_unused_table_privileges": "ผู้ไม่ล็อกอินถือ REFERENCES, TRIGGER หรือ MAINTAIN ซึ่ง Data API ไม่ใช้ ติดมากับค่าตั้งต้นของ schema ให้ถอนพร้อม TRUNCATE",
     "authenticated_unused_table_privileges": "ผู้ใช้ที่ล็อกอินถือ REFERENCES, TRIGGER หรือ MAINTAIN ซึ่ง Data API ไม่ใช้ ติดมากับค่าตั้งต้นของ schema ให้ถอนพร้อม TRUNCATE",
     "extension_in_public": "extension ติดตั้งอยู่ใน schema ที่ตรวจ (มักเป็น public) และเป็นของ role ของแพลตฟอร์ม ตารางและฟังก์ชันของมันได้สิทธิ์ให้ anon และ authenticated ที่โครงการถอนเองไม่ได้ ย้ายไป schema extensions",
+    "update_all_columns": "role ของ API แก้ได้ทุกคอลัมน์ของตารางที่นโยบายให้แก้ RLS จำกัดแถว ไม่จำกัดคอลัมน์ ให้ GRANT UPDATE เฉพาะคอลัมน์ที่หน้าเว็บแก้จริง หรือใช้ทริกเกอร์คืนค่าคอลัมน์ที่ห้ามแก้ ดูก่อนว่านโยบายให้ใครแก้บ้าง",
     "anon_truncate": "ผู้ไม่ล็อกอินมีสิทธิ์ล้างตาราง (TRUNCATE) ซึ่งไม่ผ่าน RLS ให้ถอนพร้อมสิทธิ์เขียนที่ไม่ใช้",
     "view_runs_as_owner": "view นี้รันด้วยสิทธิ์เจ้าของ RLS ของตารางข้างใต้จึงไม่มีผลกับคนที่อ่านผ่าน view ตั้ง security_invoker = true หรือถอนสิทธิ์อ่าน",
     "schema_usable_but_unchecked": "role ของ API ใช้ schema นี้ได้ แต่ไม่ได้อยู่ในการตรวจ ปกติถ้า policy เรียกฟังก์ชันในนั้น ถ้า Data API เปิด schema นี้ด้วย ให้เพิ่มใน schemas",
